@@ -23,6 +23,7 @@ use DateTime::Math;
 # Other Thoughts:
 # I need spell checking for vim or a some other good editor for perl6. (padre was crashing)
 # Vim's syntax highlighting is AWFULY SLOW for perl6.
+
 my $CronFile = q:to/HERECRON/;
 # &  -  classic cron syntax
 # @  -  frequency or timespan (every 30 minutes; with options: best moment within every 30 minutes)
@@ -75,54 +76,65 @@ role DynamicRange { # Rethink the role's and method's name.
 
 class Cron {...};
 class Cron::Time {...}; # TODO Remove these lines. Im too tired to get my code back into working condition to check if these are needed, but they shouldn't be.
-class Cron::TimeA {...}; # TODO delete this line
-grammar Cron::Gram {
-	token Min { <TimeA> }
-	token Hr { <TimeA> }
-	token Dow { <TimeA> }
-	token Day { <TimeA> }
-	token Month { <TimeA> }
-	token Yr { <TimeA> }
-	token Unparse { # FIXME This should only be used durring testing, Never published.
+class Cron::Time::Unit {...}; # TODO delete this line
+class Cron::Time::Word {...};
+# NOTE This was made specificly for fcron. other implimentations. Next will be 
+grammar Cron::Gram { # FIXME Most \h, \n, and \s 's should be replaced with a escap compatible token.
+	token Unparse { # Short for Unparsable. NOTE This should only be used durring testing, Never published ## Probably should eat the rest of the Input..
 		(\N+) {say "FAILED TO PARSE--<<$0>>"}
 	}
-	token CronVar {
-		( <[ \! \% ]> <Word>)
+
+	token TWord_Arr { # NOTE I am not satisfied with this name, So it will likely change
+		[<TWord> ',']* <TWord>
 	}
-	token CronArg { 
-		(  \&  <Word>?) 
+	token TWord { # NOTE TWord for TimeWord. Probably isn't the best name for this either.
+		'*' | [\d+ '-' \d+] | \d+ 
 	}
-	token Cmd {
-		<Word> [\h+<Word>]+
-	}
-	token Word {
+	token Min { <TWord_Arr> }
+	token Hr { <TWord_Arr> }
+	token Dow { <TWord_Arr> }
+	token Dom { <TWord_Arr> }
+	token Month { <TWord_Arr> }
+	token Yr { <TWord_Arr> }
+	
+	token Word { # Should IsA#Comment? be a word? (Probably, as it is in bash)
 		[  <Literal>
 		|| <Quote>
 		|| <-[#]> & \S]+
 	}
-	token Literal {
+	token Literal { # FIXME Escaped whitspaces should be ignored, not taken literaly. (May need to be implimented elsewear)
 		\\ \N
 	}
-	token Quote {
+	token Quote { # FIXME? Match unclosed quotes to EOF?
+		# FIXME Escaped Closure for <">. ie " \" " should work as expected ( '\' stays the same ). Try [ <Literal> || <-[\"]> ]*
 		  \' <-[\']>* \'
 		| \" <-[\"]>* \"
 	}
-	token Comment {
-		'#' (\N*)
+
+	token CronVar { # FIXME % is not a var, but a Non-clasic CronJob format. CronVar should probably handle things like mail(no) after \&. 
+		( <[ \! \% ]> <Word>)
 	}
-	token User { ... }
-	
-	token TimeA {
-		[<Tnum> ',']* <Tnum>
+	token CronArg { # I dont think \& should be  part of the CronArg. (What is CronArg Anyway) What succeeds \& should be a CronVar or the like. 
+		(  \&  <Word>?) 
 	}
-	token Tnum {
-		'*' | [\d+ '-' \d+] | \d+ 
+	token CronTime {
+		 <Min> \h+ <Hr> \h+  <Dom> \h+ <Month> \h+ <Dow> 
 	}
 	token CronJob {
-		 <CronArg> \s+ <Min> \s+ <Hr> \s+  <Dow> \s+ <Day> \s+ <Month> \s+  <Cmd> 
+		 <CronArg> \h+ <CronTime> \h+  <Cmd> 
 	}
+	
+	# TODO token User { ... }
+	token Cmd {
+		<Word> [\h+<Word>]+
+	}
+	token Comment { 
+		'#' (\N*)
+	}
+		
+	
 	rule TOP {
-		#TODO [ <Comment> || [ <CronJob>||<CronVar> ] \h* \n? || <Unparse> ]+ #Needs to be tested first, Im tired so test with-geld. Note .perl isn't working as expectd.
+		#TODO [ <Comment> || [ <CronJob>||<CronVar> ] \h* \n? || <Unparse> ]+ #Needs to be tested first, Im tired so test with-held. Note .perl isn't working as expectd.
 		[[  <Comment>
 		|| <CronJob> <Comment>?
 		|| <CronVar>
@@ -131,19 +143,19 @@ grammar Cron::Gram {
 	}
 }
 class Cron::Actions {
-	method Min($/) { make $<TimeA>.made; }
-	method Hr($/) { make $<TimeA>.made; }
-	method Dow($/) { make $<TimeA>.made; }
-	method Day($/) { make $<TimeA>.made; }
-	method Month($/) { make $<TimeA>.made; }
-	method Yr($/) { make $<TimeA>.made; }
-	method TimeA($/) {
-		my @tnums = (for ($<Tnum>.list) { .made }) ;
-		my $cta = Cron::TimeA.create( @tnums ) ;
+	method Min($/) { make $<TWord_Arr>.made; }
+	method Hr($/) { make $<TWord_Arr>.made; }
+	method Dow($/) { make $<TWord_Arr>.made; }
+	method Dom($/) { make $<TWord_Arr>.made; }
+	method Month($/) { make $<TWord_Arr>.made; }
+	method Yr($/) { make $<TWord_Arr>.made; }
+	method TWord_Arr($/) {
+		my @twords = (for ($<TWord>.list) { .made }) ;
+		my $cta = Cron::Time::Unit.create( @twords ) ;
 		make $cta;
 	}
-	method Tnum($/) {
-		make Cron::Time.create( $/ );
+	method TWord($/) {
+		make Cron::Time::Word.create( $/ );
 	}
 	method CronArg($/) {
 		make $/;
@@ -155,12 +167,17 @@ class Cron::Actions {
 		make $/;
 		#say $/;
 	}
-	method CronJob($/) {
+	method CronTime($/) {
 		make	[$<Min>.made.Str,
 			$<Hr>.made.Str,
+			$<Dom>.made.Str,
 			$<Dow>.made.Str,
-			$<Day>.made.Str,
 			$<Month>.made.Str,
+			#$<Yr>.made
+		];
+	}
+	method CronJob($/) {
+		make	[$<CronTime>.made.Str,
 			$<Cmd>.made,
 			#$<Yr>.made
 		];
@@ -170,28 +187,27 @@ class Cron::Actions {
 		make @CronJobs;
 	}
 }
+
 class Cron {
 	has $.CronFile is rw = die "CronFile Is Required";
-	has Match $!CronO = Cron::Gram.parse($!CronFile, :actions(Cron::Actions)); # The Parsed CronFile (Tree?)
+	has $!CronO = Cron::Gram.parse($!CronFile, :actions(Cron::Actions)); # The Parsed CronFile (Tree?)
 	method Call() {
 		#my $C = Cron::Gram.parse($Time);
 		#$Time.say; 
 		$!CronO = Cron::Gram.parse($.CronFile, :actions(Cron::Actions));	# $!CronO Defined here
-		#say $C;
-		#say $C<CronJob>[0].made;
 	}
 	method NextCmd() { # FIXME ... Impliment this
-		say '$!CronO';
-		say $!CronO;								# This works
-		say '$!CronO.perl';
-		say $!CronO.perl;							# This doesn't
+#		say '$!CronO';
+#		say $!CronO;								# This works
+#		say '$!CronO..perl';
+#		say $!CronO.perl;							# This doesn't
 	#	for $!CronO<CronJob> {
 	#		say $_;
 	#	}
 	}
 }
-class Cron::TimeA { # FIXME Rename this class. It is not a TimeArray, it is a TimeNumber-Array, an Array of OneUnit of Time. 
-	has @.Times;
+class Cron::Time {
+	has @.TimeUnits;
 	method gist () {
 		return &.list;
 	}
@@ -201,16 +217,41 @@ class Cron::TimeA { # FIXME Rename this class. It is not a TimeArray, it is a Ti
 	method Str () {
 		return &.Tnum_Str.join(',');
 	}
-	method Tnum_Str () {
+	method create (@TimeUnits) {
+		for @TimeUnits -> $TimeUnit {
+			die 'Error' unless ($TimeUnit ~~ Cron::Time::Unit);
+		}
+		return &.new(:@TimeUnits)
+	}
+
+}
+class Cron::Time::Unit { # NOTE Im still not sure about the name 
+	# An array of One unit of time. ie. 30 0,12 1-5 * 3-5,11-1. Your time units would be 
+	# Min 30
+	# Hr 0,12
+	# Dow 1-5
+	# Day(OfMonth) *
+	# Month 3-5,11-12
+	has @.TWords;
+	method gist () {
+		return &.list;
+	}
+	method list () {
+		return &.TWord_List;
+	}
+	method Str () {
+		return &.TWord_Str.join(',');
+	}
+	method TWord_Str () {
 		my @retval;
-		for @.Times -> $Tnums {
+		for @.TWords -> $Tnums {
 			@retval.push($Tnums.Str);
 		}
 		return @retval;
 	}
-	method Tnum_List () {
+	method TWord_List () {
 		my %retval;
-		for @.Times -> $Tnums {
+		for @.TWords -> $Tnums {
 			for $Tnums.list -> $Tnum {
 				#@retval.push($Tnum) unless (@retval ~~ $Tnum);
 				%retval{$Tnum}=1;
@@ -218,19 +259,18 @@ class Cron::TimeA { # FIXME Rename this class. It is not a TimeArray, it is a Ti
 		}
 		return %retval.keys;
 	}
-	method create(@TnumsA) {
-		my @Times;
-		for @TnumsA -> $Tnums {
-			die 'Error' unless ($Tnums ~~ Cron::Time);
-			@Times.push( $Tnums );
+	method create(@TWords) {
+		for @TWords -> $Tnums { # I couldnt get Cron::Time @TnumsA or @TnumsA of Cron::Time to work. So I am checking individualy.
+			die 'Cron::Time::Unit.create needs a Cron::Time::Word Array' unless ($Tnums ~~ Cron::Time::Word);
 		}
-		return $.new(:@Times);
+		return &.new(:@TWords);
 	}
 }
-class Cron::Time does DynamicRange { # FIXME Rename this class. It is not a Time class, but a Single Number of a single TimeUnit<dow hr min etc>,
+class Cron::Time::Word does DynamicRange { # NOTE Im still not sure about the name. 
+	# A single Unit of Time Specifier thing. Ie. in 1,10-12 Your Time::Words would be 1 and 10-12.
 	has Int $.from is rw =  die q{'from' is a required var};
 	has Int $.to is rw = $!from;
-	has Str $.type is rw;
+	has Str $.unit is rw;  
 	method gist () { # NOTE gist to Str is probably better.
 		return &.list;
 		#return callsame();
@@ -253,16 +293,17 @@ class Cron::Time does DynamicRange { # FIXME Rename this class. It is not a Time
 			when (Int || /^\d+$/) {
 				return &.new(:from($_.Int));
 			}
-			when ('*') {
-
+			when ('*') { # TODO
 			}
 			when (Str || Match) {
 				if (/^ (\d+) '-'  (\d+) $/) {
 					return &.new(:from($0.Int), :to($1.Int));
+				} else {
+					die "!CreateRange failed to parse {$Range}"
 				}
 			}
 			default {
-				die q{Unknown Call};
+				die "!CreateRange Called with Unsupported Type {$Range.WHAT}";
 			}
 		}
 	}
@@ -273,37 +314,3 @@ my $Cron = Cron.new(:CronFile($CronFile) );
 $Cron.Call;
 $Cron.NextCmd;
 
-# __END__
-my %Tcheck= (
-	Min =>	0..59,
-	Hr =>	(0..23),
-	Day =>	(0..31),
-	Dow =>	(0..6),
-	Mth =>	(1..12),
-	Yr =>	(*..*),
-);
-my %Nres=(
-	Dow=> {
-		0 => ('Sun','Sunday'),
-		1 => ('Mon','Monday'),
-		2 => ('Tue','Tuesday'),
-		3 => ('Wed','Wendsday'),
-		4 => ('Thu','Thursday'),
-		5 => ('Fri','Friday'),
-		6 => ('Sat','Saturday'),
-	},
-	Mth => {
-		1 =>  ('Jan', 'January'),
-		2 =>  ('Feb', 'Febuary'),
-		3 =>  ('Mar', 'March'),
-		4 =>  ('Apr', 'April'),
-		5 =>  ('May', 'May'),
-		6 =>  ('Jun', 'June'),
-		7 =>  ('Jul', 'July'),
-		8 =>  ('Aug', 'Augest'),
-		9 =>  ('Sep', 'September'),
-		10 => ('Oct', 'October'),
-		11 => ('Nov', 'November'),
-		12 => ('Dec', 'December'),
-	}
-);
