@@ -1,6 +1,8 @@
 #!/usr/bin/perl6
 use v6;
 use DateTime::Math;
+use BC::Debug::Color;
+$BC::Debug::Color::DebugLevel=1;
 ################
 # Project Goal #
 # To automaticly create rtcwake events for every Cron Job.
@@ -65,11 +67,13 @@ my $CronFile = q:to/HERECRON/;
 HERECRON
 
 role DynamicRange { # Rethink the role's and method's name.
-	method !SmartRange ($from, $to) { 
+	method !SmartRange ($from, $to, @unit) { 
+		Err qq{from {$from} is not in unit's range} unless @unit[0] <= $from <= @unit[*-1];
+		Err qq{to {$to} is not in unit's range} unless @unit[0] <= $to <= @unit[*-1];
 		if ($from <= $to) {
 			return $from..$to;
 		} else {
-			return ($to..$from).reverse;
+			return ($from..@unit[*-1],@unit[0]..$to);
 		}
 	}
 }
@@ -78,31 +82,31 @@ class Cron {...};
 class Cron::Time {...}; # TODO Remove these lines. Im too tired to get my code back into working condition to check if these are needed, but they shouldn't be.
 class Cron::Time::Unit {...}; # TODO delete this line
 class Cron::Time::Word {...};
-# NOTE This was made specificly for fcron. other implimentations. Next will be 
+# NOTE This was made specificly for fcron. other implimentations. Next will be Cron
 grammar Cron::Gram { # FIXME Most \h, \n, and \s 's should be replaced with a escap compatible token.
 	token Unparse { # Short for Unparsable. NOTE This should only be used durring testing, Never published ## Probably should eat the rest of the Input..
-		(\N+) {say "FAILED TO PARSE--<<$0>>"}
+		(\N+) .* {Err "FAILED TO PARSE--<<$0>>"}
 	}
 
-	token TWord_Arr { # NOTE I am not satisfied with this name, So it will likely change
-		[<TWord> ',']* <TWord>
-	}
+#	token TWord_Arr { # NOTE I am not satisfied with this name, So it will likely change
+#		[<TWord> ',']* <TWord>
+#	}
 	token TWord { # NOTE TWord for TimeWord. Probably isn't the best name for this either.
 		'*' | [\d+ '-' \d+] | \d+ 
 	}
-	token Min { <TWord_Arr> }
-	token Hr { <TWord_Arr> }
-	token Dow { <TWord_Arr> }
-	token Dom { <TWord_Arr> }
-	token Month { <TWord_Arr> }
-	token Yr { <TWord_Arr> }
+	token Min { [<TWord> ',']* <TWord> }
+	token Hr { [<TWord> ',']* <TWord> }
+	token Dow { [<TWord> ',']* <TWord> }
+	token Dom { [<TWord> ',']* <TWord> }
+	token Month { [<TWord> ',']* <TWord> }
+	token Yr { [<TWord> ',']* <TWord> }
 	
 	token Word { # Should IsA#Comment? be a word? (Probably, as it is in bash)
 		[  <Literal>
 		|| <Quote>
 		|| <-[#]> & \S]+
 	}
-	token Literal { # FIXME Escaped whitspaces should be ignored, not taken literaly. (May need to be implimented elsewear)
+	token Literal { # FIXME Escaped whitspaces(including newlines) should be ignored, not taken literaly. (May need to be implimented elsewear).
 		\\ \N
 	}
 	token Quote { # FIXME? Match unclosed quotes to EOF?
@@ -134,24 +138,50 @@ grammar Cron::Gram { # FIXME Most \h, \n, and \s 's should be replaced with a es
 		
 	
 	rule TOP {
-		#TODO [ <Comment> || [ <CronJob>||<CronVar> ] \h* \n? || <Unparse> ]+ #Needs to be tested first, Im tired so test with-held. Note .perl isn't working as expectd.
-		[[  <Comment>
-		|| <CronJob> <Comment>?
-		|| <CronVar>
-		|| <Unparse>
-		] \h* \n? ]+
+		[ <Comment> 
+		|| [ <CronJob>||<CronVar> ] \h* \n? 
+		|| <Unparse> ]+
+	#	[[  <Comment>
+	##	|| <CronJob> <Comment>?
+	#	|| <CronVar>
+	#	|| <Unparse>
+	#	] \h* \n? ]+
 	}
 }
 class Cron::Actions {
-	method Min($/) { make $<TWord_Arr>.made; }
-	method Hr($/) { make $<TWord_Arr>.made; }
-	method Dow($/) { make $<TWord_Arr>.made; }
-	method Dom($/) { make $<TWord_Arr>.made; }
-	method Month($/) { make $<TWord_Arr>.made; }
-	method Yr($/) { make $<TWord_Arr>.made; }
+	method Min($/) {
+		my @twords = (for ($<TWord>.list) { .made }) ;
+		my $cta = Cron::Time::Unit.create( @twords, :unit<Min> ) ;
+		make $cta;
+	}
+	method Hr($/) {
+		my @twords = (for ($<TWord>.list) { .made }) ;
+		my $cta = Cron::Time::Unit.create( @twords, :unit<Hr> ) ;
+		make $cta;
+	}
+	method Dow($/) {
+		my @twords = (for ($<TWord>.list) { .made }) ;
+		my $cta = Cron::Time::Unit.create( @twords, :unit<Dow> ) ;
+		make $cta;
+	}
+	method Dom($/) {
+		my @twords = (for ($<TWord>.list) { .made }) ;
+		my $cta = Cron::Time::Unit.create( @twords, :unit<Dom> ) ;
+		make $cta;
+	}
+	method Month($/) {
+		my @twords = (for ($<TWord>.list) { .made }) ;
+		my $cta = Cron::Time::Unit.create( @twords, :unit<Mon> ) ;
+		make $cta;
+	}
+	method Yr($/) {
+		my @twords = (for ($<TWord>.list) { .made }) ;
+		my $cta = Cron::Time::Unit.create( @twords, :unit<Yr> ) ;
+		make $cta;
+	}
 	method TWord_Arr($/) {
 		my @twords = (for ($<TWord>.list) { .made }) ;
-		my $cta = Cron::Time::Unit.create( @twords ) ;
+		my $cta = Cron::Time::Unit.create( @twords, :unit<Unk> ) ;
 		make $cta;
 	}
 	method TWord($/) {
@@ -168,13 +198,13 @@ class Cron::Actions {
 		#say $/;
 	}
 	method CronTime($/) {
-		make	[$<Min>.made.Str,
-			$<Hr>.made.Str,
-			$<Dom>.made.Str,
-			$<Dow>.made.Str,
-			$<Month>.made.Str,
+		make Cron::Time.create( [$<Min>.made,
+			$<Hr>.made,
+			$<Dom>.made,
+			$<Dow>.made,
+			$<Month>.made
 			#$<Yr>.made
-		];
+		]);
 	}
 	method CronJob($/) {
 		make	[$<CronTime>.made.Str,
@@ -197,34 +227,62 @@ class Cron {
 		$!CronO = Cron::Gram.parse($.CronFile, :actions(Cron::Actions));	# $!CronO Defined here
 	}
 	method NextCmd() { # FIXME ... Impliment this
-#		say '$!CronO';
-#		say $!CronO;								# This works
-#		say '$!CronO..perl';
-#		say $!CronO.perl;							# This doesn't
-	#	for $!CronO<CronJob> {
-	#		say $_;
-	#	}
+		for $!CronO<CronJob>.list {
+			Info '-----';
+			Info $_<CronTime>.made.list[0;*].join(' ');
+		}
+	}
+	method Test() {
+		$!CronO<CronJob>.list[0]<CronTime>.made.NextRun;
 	}
 }
-class Cron::Time {
+class Cron::Time { # NOTE Rethink what Str and list should return. (is list reeucursive? should Str return 1 Str or a list of Str?)
+		# List crrently doesn't let you extract the Hr, Min,etc
 	has @.TimeUnits;
 	method gist () {
-		return &.list;
+		return &.Str;
 	}
 	method list () {
-		return &.Tnum_List;
+		return &.TUnit_List;
 	}
 	method Str () {
-		return &.Tnum_Str.join(',');
+		return &.TUnit_Str.join(' ');
+	}
+	method TUnit_Str {
+		return (for @.TimeUnits {.Str});
+	}
+	method TUnit_List {
+		my @ret;
+		my $i=0;
+		for @.TimeUnits {
+			@ret[$i] = $_.list;
+			$i++;
+		};
+		return @ret;
+		return (for @.TimeUnits {.list});
+	}
+	method NextRun {
+		my $dt = DateTime.new(now);
+
+		Info $dt;
 	}
 	method create (@TimeUnits) {
 		for @TimeUnits -> $TimeUnit {
-			die 'Error' unless ($TimeUnit ~~ Cron::Time::Unit);
+			die 'Cron::Time must be passed a Cron::Time::Unit array Not ',$TimeUnit.^name unless ($TimeUnit ~~ Cron::Time::Unit);
 		}
-		return &.new(:@TimeUnits)
+		return &.new(:@TimeUnits);
 	}
 
 }
+# CONSID makeing Cron::Time::Unit handle CronTimeWord's job. 
+# change <TWord> [ \, <TWord> ]* to Capturing (<.TWord>) [ \, (<.TWord>) ]*
+my %legal=(
+	mon => (1..12),
+	hr  => (0..23),
+	min => (0..59),
+	dom => (0..31),
+	dow => (0..6)
+);
 class Cron::Time::Unit { # NOTE Im still not sure about the name 
 	# An array of One unit of time. ie. 30 0,12 1-5 * 3-5,11-1. Your time units would be 
 	# Min 30
@@ -233,8 +291,9 @@ class Cron::Time::Unit { # NOTE Im still not sure about the name
 	# Day(OfMonth) *
 	# Month 3-5,11-12
 	has @.TWords;
+	has $.unit;
 	method gist () {
-		return &.list;
+		return &.Str;
 	}
 	method list () {
 		return &.TWord_List;
@@ -271,13 +330,12 @@ class Cron::Time::Word does DynamicRange { # NOTE Im still not sure about the na
 	has Int $.from is rw =  die q{'from' is a required var};
 	has Int $.to is rw = $!from;
 	has Str $.unit is rw;  
-	method gist () { # NOTE gist to Str is probably better.
-		return &.list;
-		#return callsame();
+	method gist () { 
+		return &.Str;
 	}
 	method list () {
 		return $.from unless ($.from != $.to);
-		return self!SmartRange($.from, $.to);
+		return self!SmartRange($.from, $.to, :unit(%legal<$.unit>));
 	}
 	method Str () {
 		return $.from unless ($.from != $.to);
@@ -293,11 +351,14 @@ class Cron::Time::Word does DynamicRange { # NOTE Im still not sure about the na
 			when (Int || /^\d+$/) {
 				return &.new(:from($_.Int));
 			}
-			when ('*') { # TODO
+			when ('*') { # NOTE NYI
+				$.from= %legal<$unit>[0];
+				$.to= %legal<$unit>[*-1];
+				...;
 			}
 			when (Str || Match) {
 				if (/^ (\d+) '-'  (\d+) $/) {
-					return &.new(:from($0.Int), :to($1.Int));
+					return &.new(:from($0.Int), :to($1.Int), :unit($.unit));
 				} else {
 					die "!CreateRange failed to parse {$Range}"
 				}
@@ -313,4 +374,5 @@ class Cron::Time::Word does DynamicRange { # NOTE Im still not sure about the na
 my $Cron = Cron.new(:CronFile($CronFile) );
 $Cron.Call;
 $Cron.NextCmd;
-
+$Cron.Test;
+# vim: syntax=off
