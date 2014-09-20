@@ -67,7 +67,8 @@ my $CronFile = q:to/HERECRON/;
 HERECRON
 
 role DynamicRange { # Rethink the role's and method's name.
-	method !SmartRange ($from, $to, @unit) { 
+	method !SmartRange ($from, $to, :@unit) { 
+		return @unit[0]..@unit[*-1] if ($from ~~ '*');
 		Err qq{from {$from} is not in unit's range} unless @unit[0] <= $from <= @unit[*-1];
 		Err qq{to {$to} is not in unit's range} unless @unit[0] <= $to <= @unit[*-1];
 		if ($from <= $to) {
@@ -81,7 +82,7 @@ role DynamicRange { # Rethink the role's and method's name.
 class Cron {...};
 class Cron::Time {...}; # TODO Remove these lines. Im too tired to get my code back into working condition to check if these are needed, but they shouldn't be.
 class Cron::Time::Unit {...}; # TODO delete this line
-class Cron::Time::Word {...};
+class Cron::Time::Unit::Range {...};
 # NOTE This was made specificly for fcron. other implimentations. Next will be Cron
 grammar Cron::Gram { # FIXME Most \h, \n, and \s 's should be replaced with a escap compatible token.
 	token Unparse { # Short for Unparsable. NOTE This should only be used durring testing, Never published ## Probably should eat the rest of the Input..
@@ -112,7 +113,7 @@ grammar Cron::Gram { # FIXME Most \h, \n, and \s 's should be replaced with a es
 	token Quote { # FIXME? Match unclosed quotes to EOF?
 		# FIXME Escaped Closure for <">. ie " \" " should work as expected ( '\' stays the same ). Try [ <Literal> || <-[\"]> ]*
 		  \' <-[\']>* \'
-		| \" <-[\"]>* \"
+		| \"   [<Literal> || <-[\"]>]*   \" 
 	}
 
 	token CronVar { # FIXME % is not a var, but a Non-clasic CronJob format. CronVar should probably handle things like mail(no) after \&. 
@@ -150,32 +151,32 @@ grammar Cron::Gram { # FIXME Most \h, \n, and \s 's should be replaced with a es
 }
 class Cron::Actions {
 	method Min($/) {
-		my @twords = (for ($<TWord>.list) { .made }) ;
+		my @twords = $<TWord>.list;
 		my $cta = Cron::Time::Unit.create( @twords, :unit<Min> ) ;
 		make $cta;
 	}
 	method Hr($/) {
-		my @twords = (for ($<TWord>.list) { .made }) ;
+		my @twords = $<TWord>.list;
 		my $cta = Cron::Time::Unit.create( @twords, :unit<Hr> ) ;
 		make $cta;
 	}
 	method Dow($/) {
-		my @twords = (for ($<TWord>.list) { .made }) ;
+		my @twords = $<TWord>.list;
 		my $cta = Cron::Time::Unit.create( @twords, :unit<Dow> ) ;
 		make $cta;
 	}
 	method Dom($/) {
-		my @twords = (for ($<TWord>.list) { .made }) ;
+		my @twords = $<TWord>.list;
 		my $cta = Cron::Time::Unit.create( @twords, :unit<Dom> ) ;
 		make $cta;
 	}
 	method Month($/) {
-		my @twords = (for ($<TWord>.list) { .made }) ;
+		my @twords = $<TWord>.list;
 		my $cta = Cron::Time::Unit.create( @twords, :unit<Mon> ) ;
 		make $cta;
 	}
 	method Yr($/) {
-		my @twords = (for ($<TWord>.list) { .made }) ;
+		my @twords = $<TWord>.list;
 		my $cta = Cron::Time::Unit.create( @twords, :unit<Yr> ) ;
 		make $cta;
 	}
@@ -185,7 +186,7 @@ class Cron::Actions {
 		make $cta;
 	}
 	method TWord($/) {
-		make Cron::Time::Word.create( $/ );
+#		make Cron::Time::Unit::Range.create( $/ );
 	}
 	method CronArg($/) {
 		make $/;
@@ -201,8 +202,8 @@ class Cron::Actions {
 		make Cron::Time.create( [$<Min>.made,
 			$<Hr>.made,
 			$<Dom>.made,
-			$<Dow>.made,
-			$<Month>.made
+			$<Month>.made,
+			$<Dow>.made
 			#$<Yr>.made
 		]);
 	}
@@ -227,9 +228,11 @@ class Cron {
 		$!CronO = Cron::Gram.parse($.CronFile, :actions(Cron::Actions));	# $!CronO Defined here
 	}
 	method NextCmd() { # FIXME ... Impliment this
-		for $!CronO<CronJob>.list {
+		for $!CronO<CronJob>.list -> $Ctime{
 			Info '-----';
-			Info $_<CronTime>.made.list[0;*].join(' ');
+			Info $Ctime<CronTime>.Str;
+			Info $Ctime<CronTime>.made.Str;
+			Info $Ctime<CronTime>.made.list[$_;*].join(' ') for 0..4;
 		}
 	}
 	method Test() {
@@ -277,11 +280,12 @@ class Cron::Time { # NOTE Rethink what Str and list should return. (is list reeu
 # CONSID makeing Cron::Time::Unit handle CronTimeWord's job. 
 # change <TWord> [ \, <TWord> ]* to Capturing (<.TWord>) [ \, (<.TWord>) ]*
 my %legal=(
-	mon => (1..12),
-	hr  => (0..23),
-	min => (0..59),
-	dom => (0..31),
-	dow => (0..6)
+	Unk => [0..0],
+	Mon => [1..12],
+	Hr  => (0..23),
+	Min => (0..59),
+	Dom => (0..31),
+	Dow => (0..6)
 );
 class Cron::Time::Unit { # NOTE Im still not sure about the name 
 	# An array of One unit of time. ie. 30 0,12 1-5 * 3-5,11-1. Your time units would be 
@@ -290,27 +294,27 @@ class Cron::Time::Unit { # NOTE Im still not sure about the name
 	# Dow 1-5
 	# Day(OfMonth) *
 	# Month 3-5,11-12
-	has @.TWords;
+	has @.TRange;
 	has $.unit;
 	method gist () {
 		return &.Str;
 	}
 	method list () {
-		return &.TWord_List;
+		return &.TRange_List;
 	}
 	method Str () {
-		return &.TWord_Str.join(',');
+		return &.TRange_Str.join(',');
 	}
-	method TWord_Str () {
+	method TRange_Str () {
 		my @retval;
-		for @.TWords -> $Tnums {
+		for @.TRange -> $Tnums {
 			@retval.push($Tnums.Str);
 		}
 		return @retval;
 	}
-	method TWord_List () {
+	method TRange_List () {
 		my %retval;
-		for @.TWords -> $Tnums {
+		for @.TRange -> $Tnums {
 			for $Tnums.list -> $Tnum {
 				#@retval.push($Tnum) unless (@retval ~~ $Tnum);
 				%retval{$Tnum}=1;
@@ -318,55 +322,64 @@ class Cron::Time::Unit { # NOTE Im still not sure about the name
 		}
 		return %retval.keys;
 	}
-	method create(@TWords) {
-		for @TWords -> $Tnums { # I couldnt get Cron::Time @TnumsA or @TnumsA of Cron::Time to work. So I am checking individualy.
+	method AddTime(*@TRange) {
+		for @TRange -> $Tnums { # I couldnt get Cron::Time @TnumsA or @TnumsA of Cron::Time to work. So I am checking individualy.
 			die 'Cron::Time::Unit.create needs a Cron::Time::Word Array' unless ($Tnums ~~ Cron::Time::Word);
 		}
-		return &.new(:@TWords);
+		@.TRange.push(|@TRange);
+	}
+	method create(@TStrs, :$unit) {
+		my @TRange;
+		for @TStrs -> $Tstr { # I couldnt get Cron::Time @TnumsA or @TnumsA of Cron::Time to work. So I am checking individualy.
+			die 'Cron::Time::Unit.create needs a Str||Match Array' unless ($Tstr ~~ (Str||Match)); # Str, Match, or the like
+			@TRange.push(Cron::Time::Unit::Range.create($Tstr, :$unit));
+		}
+		return &.new(:@TRange, :$unit);
 	}
 }
-class Cron::Time::Word does DynamicRange { # NOTE Im still not sure about the name. 
+class Cron::Time::Unit::Range does DynamicRange { # NOTE Im still not sure about the name. 
 	# A single Unit of Time Specifier thing. Ie. in 1,10-12 Your Time::Words would be 1 and 10-12.
+	has Str $.orig is rw;
 	has Int $.from is rw =  die q{'from' is a required var};
 	has Int $.to is rw = $!from;
-	has Str $.unit is rw;  
+	has Str $.unit is rw = die q{'unit' is a required var}; 
 	method gist () { 
 		return &.Str;
 	}
 	method list () {
+		Err "Attempt to return Timeword list before \$.unit is set." if $.unit ~~ 'Unk'; 
 		return $.from unless ($.from != $.to);
-		return self!SmartRange($.from, $.to, :unit(%legal<$.unit>));
+		return self!SmartRange($.from, $.to, :unit(%legal{$.unit}));
 	}
 	method Str () {
 		return $.from unless ($.from != $.to);
 		return ($.from,'-',$.to).join;
 	}
-	multi method create (Str $Range ) { self!CreateRange($Range); }
-	multi method create (Match $Range ) { self!CreateRange($Range); }
-	multi method create (Int $from, Int $to=$from) {
-		return &.new(:$from, :$to);
+	multi method create (Str $Range, Str :$unit! ) { self!CreateRange($Range, :$unit); }
+	multi method create (Match $Range, Str :$unit! ) { self!CreateRange($Range, :$unit); }
+	multi method create (Int $from, Int $to=$from, Str :$unit!) {
+		return &.new(:$from, :$to, :$unit);
 	}
-	method !CreateRange ( $Range ) {
+	method !CreateRange ( $Range, :$unit) {
 		given $Range {
 			when (Int || /^\d+$/) {
-				return &.new(:from($_.Int));
+				return &.new(:from($_.Int), :$unit);
 			}
-			when ('*') { # NOTE NYI
-				$.from= %legal<$unit>[0];
-				$.to= %legal<$unit>[*-1];
-				...;
+			when ('*') {
+				return &.new(
+					:from(%legal{$unit}[0]),
+					:to(%legal{$unit}[*-1]),
+					:unit($unit)
+				);
 			}
 			when (Str || Match) {
 				if (/^ (\d+) '-'  (\d+) $/) {
-					return &.new(:from($0.Int), :to($1.Int), :unit($.unit));
-				} else {
-					die "!CreateRange failed to parse {$Range}"
+					return &.new(:from($0.Int), :to($1.Int), :$unit );
 				}
-			}
-			default {
-				die "!CreateRange Called with Unsupported Type {$Range.WHAT}";
+				die "!CreateRange failed to parse {$Range}"
 			}
 		}
+		die "!CreateRange Called with Unsupported Type {$Range.WHAT}";
 	}
 }
 
