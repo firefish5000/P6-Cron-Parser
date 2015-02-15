@@ -274,6 +274,48 @@ class Cron::Actions {
 	}
 }
 
+sub TSort(@List, :$Start!) {
+	return @List.map: { $_ if ($_ >= $Start) };
+}
+
+# FIXME e need to use the unfiltered dates for children when the parren's first filtered date is greaterthat the starting date.
+#sub TNext (@Years, @Months, @DOM, @DOW, @Hours, @Mins, $Start = now) { 
+sub TNext ( :@Mons!, :@DOMs!, :@DOWs!, :@Hrs!, :@Mins!, :$Predictions = 1, :$Start = DateTime.now, :@Yrs = $Start.year.map:{ $_,$_+1} ) { 
+	my $UnFilt=0; # stop filtering 1=min 2=hr, 3=dom; 4=month
+	my @NextRuns;
+	say  qq{NEXT OF 
+	Yr {@Yrs.perl}
+	Mon {@Mons.perl}
+	Dom {@DOMs.perl}
+	Dow {@DOWs.perl}
+	Hr {@Hrs.perl}
+	Min {@Mins.perl}};
+	# NOTE This looks like magic code. Its realy just 2 simple lines, that are repeated for Yr, Month, etc. 
+	# TODO In fact, We can probably warp them in a foreach and reduce it to 5-6 lines.
+	for ( TSort(:Start($Start.year), @Yrs) ) -> $yr { # Nearest year. Needed for keeping up with leap days.!! Do not give Year and Infi range!
+		$UnFilt = 5 if ($UnFilt < 5 && $Start.year != $yr);
+		for ( ($UnFilt >= 4) ?? @Mons !! TSort(:Start($Start.month), @Mons) ) ->  $mon {					# Nearest Month
+			$UnFilt = 4 if ($UnFilt < 4 && $Start.month != $mon);
+			for ( $UnFilt >= 3 ?? @DOMs !! TSort(:Start($Start.day), @DOMs) ) -> $dom {						# Nearest Dom
+				$UnFilt = 3 if ($UnFilt < 3 && $Start.day != $dom);
+				next if ( $dom > Date.new(:year($yr), :month($mon)).days-in-month);							# Next unless Day is in month
+				next unless ( Date.new(:year($yr), :month($mon), :day($dom)).day-of-week ~~ any(@DOWs));	# Next unless day is of DOW
+				for ( $UnFilt >= 2 ?? @Hrs !! TSort(:Start($Start.hour), @Hrs) ) -> $hr  {					# Nearest hr 
+					# TODO How do we handle dailight savings, if at all.
+					$UnFilt = 2 if ($UnFilt < 2 && $Start.hour != $hr);
+					for ( $UnFilt >= 1 ?? @Mins !! TSort(:Start($Start.minute), @Mins ) ) -> $min  {		# Nearest Min. Next Run FOUND!!
+						$UnFilt = 1 if ($UnFilt < 1);
+						#say "$yr - $mon - $dom WITH {Date.new(:year($yr), :month($mon)).days-in-month}";
+						@NextRuns.push(DateTime.new(:year($yr), :hour($hr), :minute($min), :day($dom), :month($mon)) );
+						return @NextRuns if (@NextRuns.elems >= $Predictions);
+					}
+				}
+			}
+		}
+	} # END Year
+	say "FAILED TO GET TIME:  ";
+}
+
 class Cron {
 	has $.CronFile is rw = die "CronFile Is Required";
 	has $!CronO = Cron::Gram.parse($!CronFile, :actions(Cron::Actions)); # The Parsed CronFile (Tree?)
@@ -282,32 +324,29 @@ class Cron {
 		#$Time.say; 
 		$!CronO = Cron::Gram.parse($.CronFile, :actions(Cron::Actions));	# $!CronO Defined here
 	}
-	method NextCmd() { # FIXME ... Impliment this
-		for $!CronO<CronJob>.list -> $Ctime{
-			Info '-----';
-			Info $Ctime<CronTime>.Str;
-			Info $Ctime<CronTime>.made.Str;
-			Info $Ctime<CronTime>.made.list[$_;*].join(' ') for 0..4;
-			for $Ctime<CronTime>.made.list -> $atime{
-				my ($min,$hr,$dom,$mon,$dow)=$atime[0..4];
-				Info q{got min, }, $atime[0];
-				Info q{got hr, }, $hr;
-				Info q{got dom, }, $atime[2];
-				Info q{got mon, }, $atime[3];
-				Info q{got dow, }, $atime[4];
-				Msg q{now is }, time;
-				Msg q{This is },
-				DateTime.new(:year(2014), :hour($hr[0].Int), :minute($min[0].Int), :day($dom[0].Int), :month($mon[0].Int));
-				# TODO Calculate the next CronJobs to run.
+	method NextRun( :$Job, DateTime :$From = DateTime.now, Int :$Count=1) { 
+		my ($Mins,$Hrs,$DOMs,$Mons,$DOWs)=$Job.for:{ [.for:{.Int}] };
+		my @NextRuns=TNext(:Start($From), :Predictions($Count), :$Mins, :$Hrs, :$DOMs, :$Mons, :$DOWs);
+		Msg q{NEXT COMMAND IS AT: }, @NextRuns;
+		return @NextRuns;
+	}
+	method NextCmd( DateTime :$From = DateTime.now, Int :$Count=1) { 
+#		say q{FIRST IS }, (
+		my @Cmds;
+		for $!CronO<CronJob>.list -> $Ctime {
+			for $Ctime<CronTime>.made.list -> $atime {
+				say $Ctime<Cmd>.made;
+				@Cmds.push($.NextRun(:Job($atime), :$From, :$Count));
 			}
 		}
+		Info q{FIRST IS: },join(" -- ",  @Cmds.sort[0..$Count - 1]);
 	}
 	method Test() {
 		$!CronO<CronJob>.list[0]<CronTime>.made.NextRun;
 	}
 }
 class Cron::Time { # NOTE Rethink what Str and list should return. (is list reeucursive? should Str return 1 Str or a list of Str?)
-		# List crrently doesn't let you extract the Hr, Min,etc
+# List crrently doesn't let you extract the Hr, Min,etc
 	has @.TimeUnits;
 	method gist () {
 		return &.Str;
