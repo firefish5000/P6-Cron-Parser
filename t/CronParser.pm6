@@ -3,7 +3,7 @@ use v6;
 use DateTime::Math;
 use BC::Debug::Color;
 $BC::Debug::Color::DebugLevel=1;
-use CronParser;
+use Cron;
 
 my $CronFile = q:to/HERECRON/;
 # &  -  classic cron syntax
@@ -45,9 +45,8 @@ my $CronFile = q:to/HERECRON/;
 &mail(no) 00 5 * 9-12 2,4  export DISPLAY=:0 && bash "/home/beck/Scripts/Justin.sh" 'School At 6:00  (Leave by 5:45) (5:00)'
 HERECRON
 
-#my $CronFile = qqx{fcrontab -l};
-my $Cron = CronParser::Cron.new(:CronFile($CronFile) );
+$CronFile = qqx{fcrontab -l};
+my $Cron = Cron.new(:CronFile($CronFile) );
 $Cron.Call;
-$Cron.NextCmd;
-$Cron.Test;
-# vim: syntax=off
+
+say $Cron.NextCmd( :From(DateTime.new(now+60*5)), :Count(2) ).lol.for:{ [~] "\nCommand: ", $^a[0],  "\nTime: ", $a^[1] };
