@@ -34,20 +34,31 @@ $BC::Debug::Color::DebugLevel=1;
 
 sub TimeRangeFilter (:%Cur, :$Unit, :$From!, :@List!, :$Till) {
 	my %Limit;
-	for ['Mons', 1, 12], ['Hrs', 0, 23], ['Mins', 0, 59], ['DOMs', 1, DateTime.new(year=>$From.year,|%Cur).days-in-month], ['Yrs', $From.year, $Till.year] -> [$unit, $min, $max] {
+	for ['Mons', 1, 12], ['Hrs', 0, 23], ['Mins', 0, 59], ['DOMs', 1, sub (%ccur) { return DateTime.new( |{year=>$From.year,month=>12,day=>1}, |%ccur, |{day=>1} ).days-in-month; }], ['Yrs', $From.year, $Till.year] -> [$unit, $min, $max] {
 		%Limit{$unit}<min>=$min;
 		%Limit{$unit}<max>=$max;
 	}
 	my %Units =  <Yrs Mons DOMs Hrs Mins> Z=> <year month day hour minute>;
-	# When calculating Moths, da's max is not igh enough
-	my %MaxDate = (%Limit.map:{ %Units{$^a.key} => $^a.value<max> unless $^a.key ~~ any(<DOWs>)}), :day(29) if $Unit ~~ any(<Yrs Mons>), %Cur;
+	# When calculating Moths, day's max needs to be dynamic
+	my $MaxDate = sub (%ccur) { 
+		return %((
+				%Limit.map:{ %Units{$^a.key} => $^a.value<max> unless $^a.key ~~ any(<DOWs DOMs>)}
+			),
+			day=> %Limit<DOMs><max>(%ccur),
+			%ccur
+		);
+	};
 	my %MinDate = (%Limit.map:{ %Units{$^a.key} => $^a.value<min> unless $^a.key ~~ any(<DOWs>)}), %Cur;
-	my $ad=23;
-#	my @Retval = (for (@List) -> $a { $a if ( DateTime.new( |%MaxDate, |{%Units{$Unit} => $a}) >= $From && DateTime.new( |%MinDate, |{%Units{$Unit} => $a })     <= $Till ) });
-#	return @Retval;
-	return (for (@List) -> $a { my $workaround=$a; $a if ( DateTime.new( |%MaxDate, |{%Units{$Unit} => $workaround}) >= $From && DateTime.new( |%MinDate, |{%Units{$Unit} => $workaround}) <= $Till ) });
+	return (for (@List) -> $a { 
+		next if ($Unit ~~ 'DOMs' && $a > %Limit<DOMs><max>(%Cur));
+		$a if (
+			DateTime.new( |$MaxDate({%Cur, %Units{$Unit} => $a}  ) ) >= $From 
+			&& DateTime.new( |%MinDate, |{%Units{$Unit} => $a}) <= $Till
+		) 
+	});
 }
-# 365*400+100; 400yrs, all posible DOW/DOM/Mon combinations
+# NOTE 365*400+100; 400yrs, all posible DOW/DOM/Mon combinations. If the compution speed increases so such is reasonable...
+# TODO Allow multiple jobs NextRuns to be calculated at the same time. this way NextCmd wont have to iterate through all before knowing anything.
 sub TimeFind ( :$Unit="Yrs", :$Predictions = 1, :$From = DateTime.now, :$Till = DateTime.now+to-seconds(365, 'd'), :%Cur, :@Yrs = [$From.year..$Till.year], :@Mons!, :@DOMs!, :@DOWs!, :@Hrs!, :@Mins! ) { 
 	my @NextRuns;
 	my %HTime = ( :@Yrs, :@Mons, :@DOMs, :@DOWs, :@Hrs, :@Mins);
@@ -59,7 +70,8 @@ sub TimeFind ( :$Unit="Yrs", :$Predictions = 1, :$From = DateTime.now, :$Till = 
 		@NextRuns.push(TimeFind(:Unit(%NextUnit{$Unit}), :Predictions($Predictions - @NextRuns.elems), :$From, :$Till, :Cur({%Cur, %Units{$Unit}=>$unitvalue}), |%HTime )) unless $Unit ~~ 'Mins';
 		return @NextRuns if (@NextRuns.elems >= $Predictions);
 	} # END Year
-	Dbg 1, "NOT ENOUGH RUNS IN RANGE:  ";
+	Dbg 1, "NOT ENOUGH RUNS IN RANGE:  " if $Unit ~~ 'Yrs';
+	Dbg 2, "Returning from a {$Unit} accumilating  {@NextRuns.elems} of {@NextRuns.elems+$Predictions} Runs";
 	return @NextRuns but False;
 }
 
