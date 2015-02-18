@@ -31,37 +31,33 @@ $BC::Debug::Color::DebugLevel=1;
 
 # Considered Date-WorkdayCaleder
 
-sub TSort(@List, :$Start!) {
-	return @List.map: { $_ if ($_ >= $Start) };
-}
 
-sub TNext ( :@Mons!, :@DOMs!, :@DOWs!, :@Hrs!, :@Mins!, :$Predictions = 1, :$Start = DateTime.now, :@Yrs = $Start.year.map:{ $_,$_+1} ) { 
-	my $UnFilt=0; # stop filtering 1=min 2=hr, 3=dom; 4=month
+sub TimeRangeFilter (:%Cur, :$Unit, :$From!, :@List!, :$Till) {
+	my %Limit;
+	for ['Mons', 1, 12], ['Hrs', 0, 23], ['Mins', 0, 59], ['DOMs', 1, DateTime.new(year=>$From.year,|%Cur).days-in-month], ['Yrs', $From.year, $Till.year] -> [$unit, $min, $max] {
+		%Limit{$unit}<min>=$min;
+		%Limit{$unit}<max>=$max;
+	}
+	my %Units =  <Yrs Mons DOMs Hrs Mins> Z=> <year month day hour minute>;
+	# When calculating Moths, da's max is not igh enough
+	my %MaxDate = (%Limit.map:{ %Units{$^a.key} => $^a.value<max> unless $^a.key ~~ any(<DOWs>)}), :day(29) if $Unit ~~ any(<Yrs Mons>), %Cur;
+	my %MinDate = (%Limit.map:{ %Units{$^a.key} => $^a.value<min> unless $^a.key ~~ any(<DOWs>)}), %Cur;
+	my $ad=23;
+#	my @Retval = (for (@List) -> $a { $a if ( DateTime.new( |%MaxDate, |{%Units{$Unit} => $a}) >= $From && DateTime.new( |%MinDate, |{%Units{$Unit} => $a })     <= $Till ) });
+#	return @Retval;
+	return (for (@List) -> $a { my $workaround=$a; $a if ( DateTime.new( |%MaxDate, |{%Units{$Unit} => $workaround}) >= $From && DateTime.new( |%MinDate, |{%Units{$Unit} => $workaround}) <= $Till ) });
+}
+# 365*400+100; 400yrs, all posible DOW/DOM/Mon combinations
+sub TimeFind ( :$Unit="Yrs", :$Predictions = 1, :$From = DateTime.now, :$Till = DateTime.now+to-seconds(365, 'd'), :%Cur, :@Yrs = [$From.year..$Till.year], :@Mons!, :@DOMs!, :@DOWs!, :@Hrs!, :@Mins! ) { 
 	my @NextRuns;
-	# NOTE This looks like magic code. Its realy just 2 simple lines, that are repeated for Yr, Month, etc. 
-	# TODO In fact, We can probably warp them in a loop/recursive call and reduce it to >10 lines.
-#	for (@Yrs, $Start.year; @Mons, $Start.month; @DOMs, $Start.day; @DOWs; @Hrs, $Start.hour; @Mins, $Start.minute ) -> (@list, $start) {
-#		for ( @list !! TSort(:Start($start), @list) ) -> $dom {						# Nearest Dom
-#	}
-	for ( TSort(:Start($Start.year), @Yrs) ) -> $yr { # Nearest year. Needed for keeping up with leap days.!! Do not give Year and Infi range!
-		$UnFilt = 5 if ($UnFilt < 5 && $Start.year != $yr);
-		for ( ($UnFilt >= 4) ?? @Mons !! TSort(:Start($Start.month), @Mons) ) ->  $mon {					# Nearest Month
-			$UnFilt = 4 if ($UnFilt < 4 && $Start.month != $mon);
-			for ( $UnFilt >= 3 ?? @DOMs !! TSort(:Start($Start.day), @DOMs) ) -> $dom {						# Nearest Dom
-				$UnFilt = 3 if ($UnFilt < 3 && $Start.day != $dom);
-				next if ( $dom > Date.new(:year($yr), :month($mon)).days-in-month);							# Next unless Day is in month
-				next unless ( Date.new(:year($yr), :month($mon), :day($dom)).day-of-week ~~ any(@DOWs));	# Next unless day is of DOW
-				for ( $UnFilt >= 2 ?? @Hrs !! TSort(:Start($Start.hour), @Hrs) ) -> $hr  {					# Nearest hr 
-					# TODO How do we handle dailight savings, if at all.
-					$UnFilt = 2 if ($UnFilt < 2 && $Start.hour != $hr);
-					for ( $UnFilt >= 1 ?? @Mins !! TSort(:Start($Start.minute), @Mins ) ) -> $min  {		# Nearest Min. Next Run FOUND!!
-						$UnFilt = 1 if ($UnFilt < 1);
-						@NextRuns.push(DateTime.new(:year($yr), :hour($hr), :minute($min), :day($dom), :month($mon)) );
-						return @NextRuns if (@NextRuns.elems >= $Predictions);
-					}
-				}
-			}
-		}
+	my %HTime = ( :@Yrs, :@Mons, :@DOMs, :@DOWs, :@Hrs, :@Mins);
+	my %NextUnit = <Yrs Mons DOMs Hrs> Z=> <Mons DOMs Hrs Mins>;
+	my %Units =  <Yrs Mons DOMs Hrs Mins> Z=> <year month day hour minute>;
+	for ( TimeRangeFilter(:%Cur, :$Unit, :List(%HTime{$Unit}.list), :$From, :$Till) ) -> $unitvalue {						# Nearest Dom
+		next if ( $Unit ~~ q{DOMs} && Date.new(|%Cur, day=>$unitvalue).day-of-week !~~ any(@DOWs));	# Next unless day is of DOW
+		@NextRuns.push(DateTime.new(|%Cur, minute=>$unitvalue)) if $Unit ~~ 'Mins';
+		@NextRuns.push(TimeFind(:Unit(%NextUnit{$Unit}), :Predictions($Predictions - @NextRuns.elems), :$From, :$Till, :Cur({%Cur, %Units{$Unit}=>$unitvalue}), |%HTime )) unless $Unit ~~ 'Mins';
+		return @NextRuns if (@NextRuns.elems >= $Predictions);
 	} # END Year
 	Dbg 1, "NOT ENOUGH RUNS IN RANGE:  ";
 	return @NextRuns but False;
@@ -77,7 +73,8 @@ sub TNext ( :@Mons!, :@DOMs!, :@DOWs!, :@Hrs!, :@Mins!, :$Predictions = 1, :$Sta
 	}
 	method NextRun( :$Job, DateTime :$From = DateTime.now, Int :$Count=1) { 
 		my ($Mins,$Hrs,$DOMs,$Mons,$DOWs)=$Job.for:{ [.for:{.Int}] };
-		my @NextRuns=TNext(:Start($From), :Predictions($Count), :$Mins, :$Hrs, :$DOMs, :$Mons, :$DOWs);
+		#my @NextRuns=TNext(:Start($From), :Predictions($Count), :$Mins, :$Hrs, :$DOMs, :$Mons, :$DOWs);
+		my @NextRuns=TimeFind(:$From, :Predictions($Count), :$Mins, :$Hrs, :$DOMs, :$Mons, :$DOWs);
 		return @NextRuns;
 	}
 	# The method used here is less than ideal. We should build all of their time tiables at the same time, stopping as soon as Count is reached.
@@ -87,12 +84,10 @@ sub TNext ( :@Mons!, :@DOMs!, :@DOWs!, :@Hrs!, :@Mins!, :$Predictions = 1, :$Sta
 		for $!CronO<CronJob>.list -> $Ctime {
 			for $Ctime<CronTime>.made.list -> $atime {
 				my @nRuns=$.NextRun(:Job($atime), :$From, :$Count).list;
-				#say qq{Will Push: \n},  (@nRuns.for:{ [$Ctime<Cmd>.made, $^a] })  X "\n" if @nRuns.elems >= 1;
 				@Cmds.push( @nRuns.for:{ [$Ctime<Cmd>.made, $^a] }) if @nRuns.elems >= 1;
 			}
 		}
 		#Dbg 1, q{Next Command is: },join(" -- ",  (@Cmds.sort:{ $^a[1] <=> $^b[1] })[0..$Count - 1]); #[0..$Count - 1]);
-		say ((@Cmds.sort:{ $^a[1] <=> $^b[1] })[0..$Count - 1]).for:{  [~] "\nCommand: ", $^a[0], "\nTime: ", $^a[1] };
 		return (@Cmds.sort:{ $^a[1] <=> $^b[1] })[0..$Count - 1];
 	}
 }

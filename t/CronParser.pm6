@@ -49,4 +49,5 @@ $CronFile = qqx{fcrontab -l};
 my $Cron = Cron.new(:CronFile($CronFile) );
 $Cron.Call;
 
-say $Cron.NextCmd( :From(DateTime.new(now+60*5)), :Count(2) ).lol.for:{ [~] "\nCommand: ", $^a[0],  "\nTime: ", $a^[1] };
+my @Cmds=$Cron.NextCmd( :From(DateTime.new(now+60*5)), :Count(2) );
+say @Cmds.for:{ [~] "\nCommand: ", $^a[0],  "\nTime: ", $^a[1] };
