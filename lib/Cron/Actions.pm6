@@ -28,15 +28,16 @@ $BC::Debug::Color::DebugLevel=1;
 
 # Considered Date-WorkdayCaleder
 class Cron::CheckTime {
-#	has &.Mon = self.Checker(1,12);
-#	has &.Hr = self.Checker(0,23);
-#	has &.Min = self.Checker(0,59);
-#	has &.Dom = self.Checker(1,31);
-#	has &.Yr= self.Checker( - Inf , Inf);
-	method Checker($min,$max) {	
+	method Checker($min,$max,Bool :$looprange = False) {	
 		return sub ( :$from is copy,  :$to is copy =$from) {
 			$from=$min if ($from ~~ '*');
 			$to=$max if ($to ~~ '*');
+			if ($looprange.Bool) {
+				# FIXME Consider min=>15 max=>20. with from=>21 we get 1
+				# Something like (but not exactly): ($from %(1+$max-$min)) + $min; 
+				$from	= $from % $max+1;
+				$to		= $to % $max+1;
+			}
 			Err qq{from {$from} is not in unit's range} unless $from ~~ $min..$max;
 			Err qq{to {$to} is not in unit's range} unless $to ~~ $min..$max;
 			if ($from <= $to) {
@@ -46,27 +47,10 @@ class Cron::CheckTime {
 			}
 		};
 	}
-	method Dow {
-		my $min=0;
-		my $max=6;
-		return sub ( :$from is copy,  :$to is copy =$from) {
-			$from=$min if ($from ~~ '*');
-			$to=$max if ($to ~~ '*');
-			$from=$max if ($from ~~ 7);
-			$to=$max if ($to ~~ 7);
-			Err qq{from {$from} is not in unit's range} unless $from ~~ $min..$max;
-			Err qq{to {$to} is not in unit's range} unless $to ~~ $min..$max;
-			if ($from <= $to) {
-				return $from..$to;
-			} else {
-				return $from..$max,$min..$to;
-			}
-		}
-	}
-    
-	for ['Mon', 1, 12], ['Hr', 0, 23], ['Min', 0, 59], ['Dom', 1, 31], ['Yr', - Inf, Inf] -> [$unit, $min, $max] {
+	
+	for ['Month', 1, 12], ['Hr', 0, 23], ['Min', 0, 59], ['Dom', 1, 31], ['Dow', 0, 6, True], ['Yr', - Inf, Inf] -> [$unit, $min, $max, Bool $looprange = False ] {
 		Cron::CheckTime.HOW.add_method(Cron::CheckTime, $unit, anon method () {
-            return self.Checker($min, $max); 
+            return self.Checker($min, $max, :$looprange); 
         });
     }
  }
@@ -86,36 +70,12 @@ class Cron::Actions {
 		make $/;
 	}
 	#TODO Loop This
-	method Min($/) {
-		my @twords = $<TWord>.list;
-		my $cta = Cron::Time::Unit.create( @twords, :unit(Cron::CheckTime.Min()) ) ;
-		#my $cta = Cron::Time::Unit.create( @twords, :unit(Min) ) ;
-		make $cta;
-	}
-	method Hr($/) {
-		my @twords = $<TWord>.list;
-		my $cta = Cron::Time::Unit.create( @twords, :unit(Cron::CheckTime.Hr()) ) ;
-		make $cta;
-	}
-	method Dow($/) {
-		my @twords = $<TWord>.list;
-		my $cta = Cron::Time::Unit.create( @twords, :unit(Cron::CheckTime.Dow()) ) ;
-		make $cta;
-	}
-	method Dom($/) {
-		my @twords = $<TWord>.list;
-		my $cta = Cron::Time::Unit.create( @twords, :unit(Cron::CheckTime.Dom()) ) ;
-		make $cta;
-	}
-	method Month($/) {
-		my @twords = $<TWord>.list;
-		my $cta = Cron::Time::Unit.create( @twords, :unit(Cron::CheckTime.Mon()) ) ;
-		make $cta;
-	}
-	method Yr($/) { # NOTE Does not exist to my knowledge.
-		my @twords = $<TWord>.list;
-		my $cta = Cron::Time::Unit.create( @twords, :unit(Cron::CheckTime.Yr()) ) ;
-		make $cta;
+	for <Min Hr Dow Dom Month Yr> -> $Unit {
+		Cron::Actions.^add_method( $Unit, anon method ($/) {
+			my @twords = $<TWord>.list;
+			my $cta = Cron::Time::Unit.create( @twords, :unit(Cron::CheckTime."$Unit"()) ) ;
+			make $cta;
+		});
 	}
 	method Cmd($/) {
 		make $/.Str;
@@ -172,7 +132,7 @@ class Cron::Time { # NOTE Rethink what Str and list should return. (is list reeu
 		return (for @.TimeUnits {.list});
 	}
 	method NextRun {
-		my $dt = DateTime.new(now);
+		my $dt = DateTime.now;
 
 		Info $dt;
 	}
