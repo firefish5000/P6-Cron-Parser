@@ -24,10 +24,11 @@ grammar Cron::Grammar { # FIXME Most \h, \n, and \s 's should be replaced with a
 	token Month { [<TWord> ',']* <TWord> }
 	token Yr { [<TWord> ',']* <TWord> }
 	
-	token Word { # Should IsA#Comment? be a word? (Probably, as it is in bash)
+	token Word { # Should IsA#Comment be a word? (Probably, as it is in bash)
 		[  <Literal>
 		|| <Quote>
-		|| <-[#]> & \S]+
+		|| \S]+
+		#|| <-[#]> & \S]+
 	}
 	token Literal { # FIXME Escaped whitspaces(including newlines) should be ignored, not taken literaly. (May need to be implimented elsewear).
 		\\ \N
@@ -64,10 +65,5 @@ grammar Cron::Grammar { # FIXME Most \h, \n, and \s 's should be replaced with a
 		[ <Comment> 
 		|| [ <CronJob>||<CronVar> ] \h* \n? 
 		|| <Unparse> ]+
-	#	[[  <Comment>
-	##	|| <CronJob> <Comment>?
-	#	|| <CronVar>
-	#	|| <Unparse>
-	#	] \h* \n? ]+
 	}
 }
