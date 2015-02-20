@@ -2,7 +2,7 @@
 use v6;
 use DateTime::Math;
 use BC::Debug::Color;
-$BC::Debug::Color::DebugLevel=1;
+$BC::Debug::Color::DebugLevel=0;
 ################
 # Project Goal #
 # To automaticly create rtcwake events for every Cron Job.
@@ -35,8 +35,8 @@ class Cron::CheckTime {
 			if ($looprange.Bool) {
 				# FIXME Consider min=>15 max=>20. with from=>21 we get 1
 				# Something like (but not exactly): ($from %(1+$max-$min)) + $min; 
-				$from	= $from % $max+1;
-				$to		= $to % $max+1;
+				$from	= $from % ($max+1);
+				$to		= $to % ($max+1);
 			}
 			Err qq{from {$from} is not in unit's range} unless $from ~~ $min..$max;
 			Err qq{to {$to} is not in unit's range} unless $to ~~ $min..$max;

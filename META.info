@@ -1,0 +1,8 @@
+{
+    "name" : "Cron::Parser",
+    "version" : "0.1.0",
+    "description" : "A Cron parser.",
+    "author" : "FireFish5000",
+    "depends" : [ DateTime::Math ],
+    "source-url" : "git://github.com/you/Vortex-TotalPerspective.git"
+}

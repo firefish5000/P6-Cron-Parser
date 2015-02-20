@@ -5,7 +5,7 @@ use DateTime::Math;
 use Cron::Grammar;
 use Cron::Actions;
 use BC::Debug::Color;
-$BC::Debug::Color::DebugLevel=1;
+$BC::Debug::Color::DebugLevel=0;
 ################
 # Project Goal #
 # To automaticly create rtcwake events for every Cron Job.
@@ -38,7 +38,15 @@ $BC::Debug::Color::DebugLevel=1;
 # Considered Date-WorkdayCaleder
 
 
-
+#macro Dbg2($Level,*@_) {
+#	quasi{
+#		BC::Debug::Color.Dbg( {{{$Level}}},{{{@_}}});
+#		if ( {{{$Level}}} <= $BC::Debug::Color::DebugLevel ) {
+#			BC::Debug::Color::Dbg( {{{@_}}} );
+#		}
+#	}
+#}
+#Dbg2(1,"Hello Me");
 sub TimeRangeFilter (:$timezone = $*TZ, :%Cur, :$Unit, :$From!, :@List!, :$Till = $From+to-seconds(365, 'd')) {
 	my %Limit;
 	my %U2Num =  <Yrs Mons DOMs Hrs Mins> Z=> 1..Inf;
@@ -73,6 +81,9 @@ sub TimeRangeFilter (:$timezone = $*TZ, :%Cur, :$Unit, :$From!, :@List!, :$Till 
 }
 # NOTE 365*400+100; 400yrs, all posible DOW/DOM/Mon combinations. If the compution speed increases so such is reasonable...
 # TODO Allow multiple jobs NextRuns to be calculated at the same time. this way NextCmd wont have to iterate through all before knowing anything.
+# NOTE There are at least 3 ways to do TimeFind/TimeRangeFilter. a. By converting CronTimes to DateTimes and comparing. b. By concaterating CronTimes/Dates into one long number(ie 201502040815 >= 201502040800 Note we can discard of units we havnt got to DateTime will still be needed for dow and max dom). 
+# or c. convert theCronTimes/DateTimes to seconds.
+# Getting rid of as many DateTim calls as possible may be a good idea, as DateTime 
 sub TimeFind ( :$timezone = $*TZ, :$Unit="Yrs", :$Predictions = 1, :$From = DateTime.now(:$timezone), :$Till = $From+to-seconds(365, 'd'), :%Cur, :@Yrs = [$From.year..$Till.year], :@Mons!, :@DOMs!, :@DOWs!, :@Hrs!, :@Mins! ) { 
 	my @NextRuns;
 	my %HTime = ( :@Yrs, :@Mons, :@DOMs, :@DOWs, :@Hrs, :@Mins);
@@ -84,7 +95,7 @@ sub TimeFind ( :$timezone = $*TZ, :$Unit="Yrs", :$Predictions = 1, :$From = Date
 	Dbg 1, "{$DbgPre}Entering {$Unit} and requesting {$Predictions} Runs.";
 	for ( TimeRangeFilter(:$timezone, :%Cur, :$Unit, :List(%HTime{$Unit}.list), :$From, :$Till) ) -> $unitvalue {						# Nearest Dom
 		Dbg 1, "{$DbgPre}Trying $unitvalue {$Unit}.";
-		next if ( $Unit ~~ q{DOMs} && Date.new(|%Cur, day=>$unitvalue).day-of-week !~~ any(@DOWs));	# Next unless day is of DOW
+		next if ( $Unit ~~ q{DOMs} && Date.new(:$timezone, |%Cur, day=>$unitvalue).day-of-week !~~ any(@DOWs));	# Next unless day is of DOW
 		@NextRuns.push(DateTime.new(:$timezone,|%Cur, minute=>$unitvalue)) if $Unit ~~ 'Mins';
 		@NextRuns.push(TimeFind(:Unit(%NextUnit{$Unit}), :Predictions($Predictions - @NextRuns.elems), :$From, :$Till, :$timezone, :Cur({%Cur, %Units{$Unit}=>$unitvalue}), |%HTime )) unless $Unit ~~ 'Mins';
 		Dbg 1, "{$DbgPre}Returning from Final {$Unit} accumilating the requested {@NextRuns.elems} Runs" if (@NextRuns.elems >= $Predictions);
@@ -105,7 +116,7 @@ sub TimeFind ( :$timezone = $*TZ, :$Unit="Yrs", :$Predictions = 1, :$From = Date
 		my ($Mins,$Hrs,$DOMs,$Mons,$DOWs)=$Job.for:{ [.for:{.Int}] };
 		Dbg 1, "\tTimeTree: {:$Mins, :$Hrs, :$DOMs, :$Mons, :$DOWs}";
 		#my @NextRuns=TNext(:Start($From), :Predictions($Count), :$Mins, :$Hrs, :$DOMs, :$Mons, :$DOWs);
-		my @NextRuns=TimeFind(:$timezone, :$From, :Predictions($Count), :$Mins, :$Hrs, :$DOMs, :$Mons, :$DOWs);
+		my @NextRuns=TimeFind(:$timezone, :$From, :$Till, :Predictions($Count), :$Mins, :$Hrs, :$DOMs, :$Mons, :$DOWs);
 		return @NextRuns;
 	}
 	# The method used here is less than ideal. We should build all of their time tiables at the same time, stopping as soon as Count is reached.
@@ -115,7 +126,7 @@ sub TimeFind ( :$timezone = $*TZ, :$Unit="Yrs", :$Predictions = 1, :$From = Date
 		for $!CronO<CronJob>.list -> $Ctime {
 			for $Ctime<CronTime>.made.list -> $atime {
 				Dbg 1, "LOOKING AT {$Ctime<Cmd>.made} -->";
-				my @nRuns=$.NextRun(:Job($atime), :$From, :$Count).list;
+				my @nRuns=$.NextRun(:Job($atime), :$timezone, :$From, :$Till, :$Count).list;
 				@Cmds.push( @nRuns.for:{ [$Ctime<Cmd>.made, $^a] }) if @nRuns.elems >= 1;
 			}
 		}
