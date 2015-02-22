@@ -2,7 +2,7 @@
 use v6;
 use DateTime::Math;
 use BC::Debug::Color;
-$BC::Debug::Color::DebugLevel=0;
+#$BC::Debug::Color::DebugLevel=0;
 ################
 # Project Goal #
 # To automaticly create rtcwake events for every Cron Job.

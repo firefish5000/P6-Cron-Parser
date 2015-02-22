@@ -3,7 +3,7 @@
 use v6;
 use DateTime::Math;
 use BC::Debug::Color;
-$BC::Debug::Color::DebugLevel=1;
+#$BC::Debug::Color::DebugLevel=1;
 
 # NOTE This was made specificly for fcron. other implimentations. Next will be Cron
 grammar Cron::Grammar { # FIXME Most \h, \n, and \s 's should be replaced with a escap compatible token.
@@ -11,9 +11,6 @@ grammar Cron::Grammar { # FIXME Most \h, \n, and \s 's should be replaced with a
 		(\N+) .* {Err "FAILED TO PARSE--<<$0>>"}
 	}
 
-#	token TWord_Arr { # NOTE I am not satisfied with this name, So it will likely change
-#		[<TWord> ',']* <TWord>
-#	}
 	token TWord { # NOTE TWord for TimeWord. Probably isn't the best name for this either.
 		'*' | [\d+ '-' \d+] | \d+ 
 	}
