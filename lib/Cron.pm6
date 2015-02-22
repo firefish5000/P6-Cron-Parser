@@ -7,24 +7,9 @@ use Cron::Actions;
 use BC::Debug::Color;
 $BC::Debug::Color::DebugLevel=0;
 ################
-# Project Goal #
-# To automaticly create rtcwake events for every Cron Job.
-#######################
-# Implimantation Goal #
-# Create an RTC wake event for the next CronJob occuring in 10min+
-# By default, Set RTC wake event for 5min prior to CronJob execution time.
-# On Wake, Imediantly create the RTCwake event for the next job that meats the criteria.
-# Check Every 5min to see if cronfile has changed and update events(create a hook to notify us if possible)
-# Allow the user to specify weather to create RTC wake events, both by default, and on individual jobs.
-# Check to see if cron has a &wake(1) or similar command once done. (put your hard work to waste)
-###############
-# SubProjects #
-# CronParser, a potentialy usefull Cron:: Grammar && Actions implimentation;
-#########
 # State #
 # Unusable, no support garenty. Future versions will break this and no there will be no backwards compatibility until API version 0.0.1
 # The API uses the following naming convention. <Complete Rewrite>.<Incompatible Changes>.<Compatible Changes> [Some testing/development tag/number]?
-# For now our API and version is 0.0.0 and our code is broken.
 # Other Thoughts:
 # I need spell checking for vim or a some other good editor for perl6. (padre was crashing)
 # Vim's syntax highlighting is AWFULY SLOW for perl6.
@@ -37,12 +22,12 @@ $BC::Debug::Color::DebugLevel=0;
 # however Dbg as it works now (other than the evauating the message unconditionaly) has more than enough usecases to keep it as an option. 
 # Considered Date-WorkdayCaleder
 
-
 #macro Dbg2($Level,*@_) {
 #	quasi{
-#		BC::Debug::Color.Dbg( {{{$Level}}},{{{@_}}});
-#		if ( {{{$Level}}} <= $BC::Debug::Color::DebugLevel ) {
-#			BC::Debug::Color::Dbg( {{{@_}}} );
+#		BC::Debug::Color::Dbg( {{{$Level}}},{{{@_}}});
+#		if ( {{{$Level}}} <= {{{$SDBGL}}} ) {
+#			BC::Debug::Color::Msg( {{{@_}}} );
+#			say ( {{{@_}}} );
 #		}
 #	}
 #}
@@ -95,7 +80,8 @@ sub TimeFind ( :$timezone = $*TZ, :$Unit="Yrs", :$Predictions = 1, :$From = Date
 	Dbg 1, "{$DbgPre}Entering {$Unit} and requesting {$Predictions} Runs.";
 	for ( TimeRangeFilter(:$timezone, :%Cur, :$Unit, :List(%HTime{$Unit}.list), :$From, :$Till) ) -> $unitvalue {						# Nearest Dom
 		Dbg 1, "{$DbgPre}Trying $unitvalue {$Unit}.";
-		next if ( $Unit ~~ q{DOMs} && Date.new(:$timezone, |%Cur, day=>$unitvalue).day-of-week !~~ any(@DOWs));	# Next unless day is of DOW
+		Dbg 1,  "Testing DOW {Date.new(:$timezone, |%Cur, day=>$unitvalue).day-of-week % 7} Matches any of DOWs" if $Unit ~~ q{DOMs};
+		next if ( $Unit ~~ q{DOMs} && ( Date.new(:$timezone, |%Cur, day=>$unitvalue).day-of-week % 7 ) !~~ any(@DOWs));	# Next unless day is of DOW
 		@NextRuns.push(DateTime.new(:$timezone,|%Cur, minute=>$unitvalue)) if $Unit ~~ 'Mins';
 		@NextRuns.push(TimeFind(:Unit(%NextUnit{$Unit}), :Predictions($Predictions - @NextRuns.elems), :$From, :$Till, :$timezone, :Cur({%Cur, %Units{$Unit}=>$unitvalue}), |%HTime )) unless $Unit ~~ 'Mins';
 		Dbg 1, "{$DbgPre}Returning from Final {$Unit} accumilating the requested {@NextRuns.elems} Runs" if (@NextRuns.elems >= $Predictions);
