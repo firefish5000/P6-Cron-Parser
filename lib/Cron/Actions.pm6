@@ -1,4 +1,6 @@
 #!/usr/bin/perl6
+#unit module Cron::Actions;
+#unit class Cron::Actions;
 use v6;
 use DateTime::Math;
 use BC::Debug::Color;
@@ -48,10 +50,16 @@ class Cron::CheckTime {
 		};
 	}
 	
-	for ['Month', 1, 12], ['Hr', 0, 23], ['Min', 0, 59], ['Dom', 1, 31], ['Dow', 0, 6, True], ['Yr', - Inf, Inf] -> [$unit, $min, $max, Bool $looprange = False ] {
-		Cron::CheckTime.HOW.add_method(Cron::CheckTime, $unit, anon method () {
-            return self.Checker($min, $max, :$looprange); 
-        });
+#	for ['Month', 1, 12], ['Hr', 0, 23], ['Min', 0, 59], ['Dom', 1, 31], ['Dow', 0, 6, True], ['Yr', - Inf, Inf] -> [$unit, $min, $max, Bool $looprange = False ] {
+#		Cron::CheckTime.HOW.add_method(Cron::CheckTime, $unit, anon method () {
+#            return self.Checker($min, $max, :$looprange); 
+#        });
+#    }
+	method For(Str $Wanted_Unit) {
+		for ['Month', 1, 12], ['Hr', 0, 23], ['Min', 0, 59], ['Dom', 1, 31], ['Dow', 0, 6, True], ['Yr', - Inf, Inf] -> [$unit, $min, $max, Bool $looprange = False ] {
+			next unless $unit eq $Wanted_Unit;
+            return self.Checker($min, $max, :$looprange);
+		}
     }
  }
 
@@ -61,21 +69,51 @@ role DynamicRange { # Rethink the role's and method's name.
 	}
 }
 
-class Cron::Time {...}; # TODO Remove these lines. Im too tired to get my code back into working condition to check if these are needed, but they shouldn't be.
-class Cron::Time::Unit {...}; # TODO delete this line
-class Cron::Time::Unit::Range {...};
+class Cron::Time {...}
+class Cron::Time::Unit {...}
+class Cron::Time::Unit::Range {...}
 # NOTE This was made specificly for fcron. other implimentations. Next will be Cron
 class Cron::Actions {
 	method CronArg($/) {
 		make $/;
 	}
 	#TODO Loop This
-	for <Min Hr Dow Dom Month Yr> -> $Unit {
-		Cron::Actions.^add_method( $Unit, anon method ($/) {
-			my @twords = $<TWord>.list;
-			my $cta = Cron::Time::Unit.create( @twords, :unit(Cron::CheckTime."$Unit"()) ) ;
-			make $cta;
-		});
+#	for <Min Hr Dow Dom Month Yr> -> $Unit {
+#		Cron::Actions.^add_method( $Unit, anon method ($/) {
+#			my @twords = $<TWord>.list;
+#			my $cta = Cron::Time::Unit.create( @twords, :unit(Cron::CheckTime."$Unit"()) ) ;
+#			make $cta;
+#		});
+#	}
+	method Hr($/) {
+		my @twords = $<TWord>.list;
+		my $cta = Cron::Time::Unit.create( @twords, :unit(Cron::CheckTime.For("Hr")) ) ;
+		make $cta;
+	}
+	method Dow($/) {
+		my @twords = $<TWord>.list;
+		my $cta = Cron::Time::Unit.create( @twords, :unit(Cron::CheckTime.For("Dow")) ) ;
+		make $cta;
+	}
+	method Dom($/) {
+		my @twords = $<TWord>.list;
+		my $cta = Cron::Time::Unit.create( @twords, :unit(Cron::CheckTime.For("Dom")) ) ;
+		make $cta;
+	}
+	method Month($/) {
+		my @twords = $<TWord>.list;
+		my $cta = Cron::Time::Unit.create( @twords, :unit(Cron::CheckTime.For("Month")) ) ;
+		make $cta;
+	}
+	method Yr($/) {
+		my @twords = $<TWord>.list;
+		my $cta = Cron::Time::Unit.create( @twords, :unit(Cron::CheckTime.For("Yr")) ) ;
+		make $cta;
+	}
+	method Min($/) {
+		my @twords = $<TWord>.list;
+		my $cta = Cron::Time::Unit.create( @twords, :unit(Cron::CheckTime.For("Min")) ) ;
+		make $cta;
 	}
 	method Cmd($/) {
 		make $/.Str;

@@ -1,4 +1,5 @@
 #!/usr/bin/perl6
+#unit module Cron;
 class Cron {
 use v6;
 use DateTime::Math;
@@ -43,14 +44,14 @@ sub TimeRangeFilter (:$timezone = $*TZ, :%Cur, :$Unit, :$From!, :@List!, :$Till 
 	my %Units =  <Yrs Mons DOMs Hrs Mins> Z=> <year month day hour minute>;
 	# When calculating Moths, day's max needs to be dynamic
 	my $MaxDate = sub (%ccur) { 
-		return %((
+		return %(|(
 				%Limit.map:{ %Units{$^a.key} => $^a.value<max> unless $^a.key ~~ any(<DOWs DOMs>)}
 			),
 			day=> %Limit<DOMs><max>(%ccur),
 			%ccur
 		);
 	};
-	my %MinDate = (%Limit.map:{ %Units{$^a.key} => $^a.value<min> unless $^a.key ~~ any(<DOWs>)}), %Cur;
+	my %MinDate = |(%Limit.map:{ %Units{$^a.key} => $^a.value<min> unless $^a.key ~~ any(<DOWs>)}), %Cur;
 	return (for (@List) -> $a { 
 		next if ($Unit ~~ 'DOMs' && $a > %Limit<DOMs><max>(%Cur));
 		my Bool $IsFrom = DateTime.new( :$timezone, |$MaxDate({%Cur, %Units{$Unit} => $a}  ) ) >= $From ;
@@ -78,6 +79,7 @@ sub TimeFind ( :$timezone = $*TZ, :$Unit="Yrs", :$Predictions = 1, :$From = Date
 	my $DbgPre="\t"xx%U2Num{$Unit};
 	my Str $DbgPost="-->";
 	Dbg 1, "{$DbgPre}Entering {$Unit} and requesting {$Predictions} Runs.";
+	Dbg 1, "{$DbgPre} {$Unit} will yield List {%HTime{$Unit}.list}.";
 	for ( TimeRangeFilter(:$timezone, :%Cur, :$Unit, :List(%HTime{$Unit}.list), :$From, :$Till) ) -> $unitvalue {						# Nearest Dom
 		Dbg 1, "{$DbgPre}Trying $unitvalue {$Unit}.";
 		Dbg 1,  "Testing DOW {Date.new(:$timezone, |%Cur, day=>$unitvalue).day-of-week % 7} Matches any of DOWs" if $Unit ~~ q{DOMs};
@@ -85,11 +87,11 @@ sub TimeFind ( :$timezone = $*TZ, :$Unit="Yrs", :$Predictions = 1, :$From = Date
 		@NextRuns.push(DateTime.new(:$timezone,|%Cur, minute=>$unitvalue)) if $Unit ~~ 'Mins';
 		@NextRuns.push(TimeFind(:Unit(%NextUnit{$Unit}), :Predictions($Predictions - @NextRuns.elems), :$From, :$Till, :$timezone, :Cur({%Cur, %Units{$Unit}=>$unitvalue}), |%HTime )) unless $Unit ~~ 'Mins';
 		Dbg 1, "{$DbgPre}Returning from Final {$Unit} accumilating the requested {@NextRuns.elems} Runs" if (@NextRuns.elems >= $Predictions);
-		return @NextRuns if (@NextRuns.elems >= $Predictions);
+		return |@NextRuns if (@NextRuns.elems >= $Predictions);
 	} # END Year
 	Dbg 1, "{$DbgPre}NOT ENOUGH RUNS IN RANGE:  " if $Unit ~~ 'Yrs';
 	Dbg 1, "{$DbgPre}Returning from a {$Unit} accumilating  {@NextRuns.elems} of {@NextRuns.elems+($Predictions - @NextRuns.elems)} Runs";
-	return @NextRuns but False;
+	return |@NextRuns but False;
 }
 
 #class Cron {
@@ -99,7 +101,7 @@ sub TimeFind ( :$timezone = $*TZ, :$Unit="Yrs", :$Predictions = 1, :$From = Date
 		$!CronO = Cron::Grammar.parse($.CronFile, :actions(Cron::Actions));	# $!CronO Defined here
 	}
 	method NextRun( :$timezone = $*TZ, :$Job, DateTime :$From = DateTime.now(:$timezone), :$Till = $From+to-seconds(365, 'd'), Int :$Count=1) { 
-		my ($Mins,$Hrs,$DOMs,$Mons,$DOWs)=$Job.for:{ [.for:{.Int}] };
+		my ($Mins,$Hrs,$DOMs,$Mons,$DOWs)=$Job.map:{ [.cache.sort:{ $^a.Int <=> $^b.Int }] };
 		Dbg 1, "\tTimeTree: {:$Mins, :$Hrs, :$DOMs, :$Mons, :$DOWs}";
 		#my @NextRuns=TNext(:Start($From), :Predictions($Count), :$Mins, :$Hrs, :$DOMs, :$Mons, :$DOWs);
 		my @NextRuns=TimeFind(:$timezone, :$From, :$Till, :Predictions($Count), :$Mins, :$Hrs, :$DOMs, :$Mons, :$DOWs);
@@ -113,14 +115,15 @@ sub TimeFind ( :$timezone = $*TZ, :$Unit="Yrs", :$Predictions = 1, :$From = Date
 			for $Ctime<CronTime>.made.list -> $atime {
 				Dbg 1, "LOOKING AT {$Ctime<Cmd>.made} -->";
 				my @nRuns=$.NextRun(:Job($atime), :$timezone, :$From, :$Till, :$Count).list;
-				@Cmds.push( @nRuns.for:{ [$Ctime<Cmd>.made, $^a] }) if @nRuns.elems >= 1;
+				@Cmds.push( @nRuns.map:{ $Ctime<Cmd>.made, $^a }) if @nRuns.elems >= 1;
 			}
 		}
 		#Dbg 1, q{Next Command is: },join(" -- ",  (@Cmds.sort:{ $^a[1] <=> $^b[1] })[0..$Count - 1]); #[0..$Count - 1]);
 		Dbg 1, "From {$From}";
-		Dbg 1, @Cmds.join("\n"); # There seems to be a problem, especially with the first result.
+		Dbg 1, @Cmds.join("\n-----\n"); # There seems to be a problem, especially with the first result.
 		Dbg 1, "---";
-		Dbg 1, (@Cmds.sort:{ $^a[1] <=> $^b[1] }).join("\n"); # There seems to be a problem, especially with the first result.
-		return (@Cmds.sort:{ $^a[1] <=> $^b[1] })[0..$Count - 1]; # There seems to be a problem, especially with the first result.
+		Dbg 1, (@Cmds.sort:{ $^a[0] <=> $^b[0] }).join("\n"); # There seems to be a problem, especially with the first result.
+		#say (@Cmds.sort:{ $^a[0] <=> $^b[0] })[0..$Count - 1]; # There seems to be a problem, especially with the first result.
+		return |(@Cmds.sort:{ $^a[0] <=> $^b[0] })[0..$Count - 1]; # There seems to be a problem, especially with the first result.
 	}
 }
