@@ -1,8 +1,18 @@
 {
     "name" : "Cron::Parser",
-    "version" : "0.1.0",
-    "description" : "A Cron parser.",
-    "author" : "FireFish5000",
-    "depends" : [ DateTime::Math ],
-    "source-url" : "git://github.com/you/Vortex-TotalPerspective.git"
+    "version" : "v0.0.2",
+    "description" : "A Cron parser. Capable of finding next cronjob(datetime it will run and command that will run), Past job times, etc.",
+    "author" : "Brandon Beck <firefish6000@gmail.com>",
+	"auth" : "github:firefish5000",
+	"tags" : [
+		"schedual"
+	],
+    "depends" : [ "DateTime::Math" ],
+	"provides"      : {
+		"Cron::Parser"	: "lib/Cron.pm6",
+		"Cron::Grammar"	: "lib/Cron/Grammar.pm6",
+		"Cron::Actions"	: "lib/Cron/Actions.pm6",
+		"BC::Debug::Color"	: "lib/BC/Debug/Color.pm6"
+	},
+    "source-url" : "git://github.com/firefish5000/P6-Cron-Parser.git"
 }

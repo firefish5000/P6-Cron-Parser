@@ -47,7 +47,7 @@ grammar Cron::Grammar { # FIXME Most \h, \n, and \s 's should be replaced with a
 		 <Min> \h+ <Hr> \h+  <Dom> \h+ <Month> \h+ <Dow> 
 	}
 	token CronJob {
-		 <CronArg> \h+ <CronTime> \h+  <Cmd> 
+		 [ [<CronArg> ',']* <CronArg> \h+]? <CronTime> \h+  <Cmd> 
 	}
 	
 	# TODO token User { ... }

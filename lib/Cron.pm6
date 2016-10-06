@@ -1,6 +1,6 @@
 #!/usr/bin/perl6
 #unit module Cron;
-class Cron {
+class Cron::Parser {
 use v6;
 use DateTime::Math;
 use Cron::Grammar;
