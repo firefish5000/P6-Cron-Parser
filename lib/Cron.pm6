@@ -52,7 +52,7 @@ sub TimeRangeFilter (:$timezone = $*TZ, :%Cur, :$Unit, :$From!, :@List!, :$Till 
 		);
 	};
 	my %MinDate = |(%Limit.map:{ %Units{$^a.key} => $^a.value<min> unless $^a.key ~~ any(<DOWs>)}), %Cur;
-	return (for (@List) -> $a { # FIXME This anon routine has very noticable and negitive performance impact on the code. Probably related to MaxDate calls
+	return (for @List -> $a { # FIXME This anon routine has very noticable and negitive performance impact on the code. Probably related to MaxDate calls
 		next if ($Unit ~~ 'DOMs' && $a > %Limit<DOMs><max>(%Cur));
 		my Bool $IsFrom = DateTime.new( :$timezone, |$MaxDate({%Cur, %Units{$Unit} => $a}  ) ) >= $From ;
 		my Bool $IsTill = DateTime.new( :$timezone, |%MinDate, |{%Units{$Unit} => $a}) <= $Till;
@@ -112,8 +112,8 @@ sub TimeFind ( :$timezone = $*TZ, :$Unit="Yrs", :$Predictions = 1, :$From = Date
 	method NextCmd( :$timezone = $*TZ, DateTime :$From = DateTime.now(:$timezone), :$Till = $From+to-seconds(365, 'd'), Int :$Count=1) { 
 		my @Cmds;
 		# TODO Check cronjobs simitaniously for there runtimes. Rakudo bug is currently stoppimg this from reliably working
-		# for $!CronO<CronJob>.list.race(:batch(1)) -> $Ctime { # Batch size determins how many each thread will get. There must be at least one more than the Batch size to create a second thread.
-		for $!CronO<CronJob>.list -> $Ctime {
+		#for $!CronO<CronJob>.list.race(:batch(1)) -> $Ctime { # Batch size determins how many each thread will get. There must be at least one more than the Batch size to create a second thread.
+			for $!CronO<CronJob>.list -> $Ctime {
 			for $Ctime<CronTime>.made.list -> $atime {
 				Dbg 1, "LOOKING AT {$Ctime<Cmd>.made} -->";
 				my @nRuns=$.NextRun(:Job($atime), :$timezone, :$From, :$Till, :$Count).list;

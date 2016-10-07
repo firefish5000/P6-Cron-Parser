@@ -24,7 +24,7 @@ my $CronFile = q:to/HERECRON/;
 HERECRON
 
 #$CronFile = qqx{fcrontab -l};
-my $Cron = Cron.new(:CronFile($CronFile) );
+my $Cron = Cron::Parser.new(:CronFile($CronFile) );
 $Cron.Call;
 
 #my @Cmds=$Cron.NextCmd( :From(DateTime.now ), :Count(1) );
