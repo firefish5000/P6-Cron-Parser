@@ -42,7 +42,7 @@ sub TimeRangeFilter (:$timezone = $*TZ, :%Cur, :$Unit, :$From!, :@List!, :$Till 
 		%Limit{$unit}<max>=$max;
 	}
 	my %Units =  <Yrs Mons DOMs Hrs Mins> Z=> <year month day hour minute>;
-	# When calculating Moths, day's max needs to be dynamic
+	# When calculating Moths, day's max needs to be dynamic. FIXME this anonomous sub is slow and non-optimal
 	my $MaxDate = sub (%ccur) { 
 		return %(|(
 				%Limit.map:{ %Units{$^a.key} => $^a.value<max> unless $^a.key ~~ any(<DOWs DOMs>)}
@@ -60,13 +60,11 @@ sub TimeRangeFilter (:$timezone = $*TZ, :%Cur, :$Unit, :$From!, :@List!, :$Till 
 		#Dbg 3, $DbgPre, "($IsFrom) Checking MAX >= FROM {DateTime.new( :$timezone, |$MaxDate({%Cur, %Units{$Unit} => $a}  ) )} >= {$From}";
 		#Dbg 3, $DbgPre, "($IsTill) Checking MIN <= TILL {DateTime.new( :$timezone, |%MinDate, |{%Units{$Unit} => $a})} <= {$Till}";
 		$a if (
-			#DateTime.new(:$timezone, |$MaxDate({%Cur, %Units{$Unit} => $a}  ) ) >= $From 
-			#&& DateTime.new(:$timezone, |%MinDate, |{%Units{$Unit} => $a}) <= $Till
 			$IsFrom && $IsTill
 		) 
 	});
 }
-# NOTE 365*400+100; 400yrs, all posible DOW/DOM/Mon combinations. If the compution speed increases so such is reasonable...
+# NOTE 365*400+100; 400yrs, all posible DOW/DOM/Mon combinations.
 # TODO Allow multiple jobs NextRuns to be calculated at the same time. this way NextCmd wont have to iterate through all before knowing anything.
 # NOTE There are at least 3 ways to do TimeFind/TimeRangeFilter. a. By converting CronTimes to DateTimes and comparing. b. By concaterating CronTimes/Dates into one long number(ie 201502040815 >= 201502040800 Note we can discard of units we havnt got to DateTime will still be needed for dow and max dom). 
 # or c. convert theCronTimes/DateTimes to seconds.
@@ -81,12 +79,13 @@ sub TimeFind ( :$timezone = $*TZ, :$Unit="Yrs", :$Predictions = 1, :$From = Date
 	my Str $DbgPost="-->";
 	Dbg 1, "{$DbgPre}Entering {$Unit} and requesting {$Predictions} Runs.";
 	Dbg 1, "{$DbgPre} {$Unit} will yield List {%HTime{$Unit}.list}.";
-	for ( TimeRangeFilter(:$timezone, :%Cur, :$Unit, :List(%HTime{$Unit}.list), :$From, :$Till) ) -> $unitvalue {						# Nearest Dom
+	for ( TimeRangeFilter(:$timezone, :%Cur, :$Unit, :List(%HTime{$Unit}.list), :$From, :$Till) ) -> $unitvalue {
+		# Nearest Dom
 		Dbg 1, "{$DbgPre}Trying $unitvalue {$Unit}.";
 		Dbg 1,  "Testing DOW {Date.new(:$timezone, |%Cur, day=>$unitvalue).day-of-week % 7} Matches any of DOWs" if $Unit ~~ q{DOMs};
 		next if ( $Unit ~~ q{DOMs} && ( Date.new(:$timezone, |%Cur, day=>$unitvalue).day-of-week % 7 ) !~~ any(@DOWs));	# Next unless day is of DOW
 		@NextRuns.push(DateTime.new(:$timezone,|%Cur, minute=>$unitvalue)) if $Unit ~~ 'Mins';
-		@NextRuns.push(TimeFind(:Unit(%NextUnit{$Unit}), :Predictions($Predictions - @NextRuns.elems), :$From, :$Till, :$timezone, :Cur({%Cur, %Units{$Unit}=>$unitvalue}), |%HTime )) unless $Unit ~~ 'Mins';
+		@NextRuns.push(|TimeFind(:Unit(%NextUnit{$Unit}), :Predictions($Predictions - @NextRuns.elems), :$From, :$Till, :$timezone, :Cur({%Cur, %Units{$Unit}=>$unitvalue}), |%HTime )) unless $Unit ~~ 'Mins';
 		Dbg 1, "{$DbgPre}Returning from Final {$Unit} accumilating the requested {@NextRuns.elems} Runs" if (@NextRuns.elems >= $Predictions);
 		return |@NextRuns if (@NextRuns.elems >= $Predictions);
 	} # END Year
@@ -105,13 +104,15 @@ sub TimeFind ( :$timezone = $*TZ, :$Unit="Yrs", :$Predictions = 1, :$From = Date
 		my ($Mins,$Hrs,$DOMs,$Mons,$DOWs)=$Job.map:{ [.cache.sort:{ $^a.Int <=> $^b.Int }] };
 		Dbg 1, "\tTimeTree: {:$Mins, :$Hrs, :$DOMs, :$Mons, :$DOWs}";
 		#my @NextRuns=TNext(:Start($From), :Predictions($Count), :$Mins, :$Hrs, :$DOMs, :$Mons, :$DOWs);
-		my @NextRuns=TimeFind(:$timezone, :$From, :$Till, :Predictions($Count), :$Mins, :$Hrs, :$DOMs, :$Mons, :$DOWs);
-		return @NextRuns;
+		my @NextRuns=|TimeFind(:$timezone, :$From, :$Till, :Predictions($Count), :$Mins, :$Hrs, :$DOMs, :$Mons, :$DOWs);
+		return |@NextRuns;
 	}
 	# The method used here is less than ideal. We should build all of their time tiables at the same time, stopping as soon as Count is reached.
 	# If patched, it needs to be done in TNext, which also could use a renaming.
 	method NextCmd( :$timezone = $*TZ, DateTime :$From = DateTime.now(:$timezone), :$Till = $From+to-seconds(365, 'd'), Int :$Count=1) { 
 		my @Cmds;
+		# TODO Check cronjobs simitaniously for there runtimes. Rakudo bug is currently stoppimg this from reliably working
+		# for $!CronO<CronJob>.list.race(:batch(1)) -> $Ctime { # Batch size determins how many each thread will get. There must be at least one more than the Batch size to create a second thread.
 		for $!CronO<CronJob>.list -> $Ctime {
 			for $Ctime<CronTime>.made.list -> $atime {
 				Dbg 1, "LOOKING AT {$Ctime<Cmd>.made} -->";
@@ -121,10 +122,7 @@ sub TimeFind ( :$timezone = $*TZ, :$Unit="Yrs", :$Predictions = 1, :$From = Date
 		}
 		#Dbg 1, q{Next Command is: },join(" -- ",  (@Cmds.sort:{ $^a[1] <=> $^b[1] })[0..$Count - 1]); #[0..$Count - 1]);
 		Dbg 1, "From {$From}";
-		Dbg 1, @Cmds.join("\n-----\n"); # There seems to be a problem, especially with the first result.
-		Dbg 1, "---";
-		Dbg 1, (@Cmds.sort:{ $^a[0] <=> $^b[0] }).join("\n"); # There seems to be a problem, especially with the first result.
-		#say (@Cmds.sort:{ $^a[0] <=> $^b[0] })[0..$Count - 1]; # There seems to be a problem, especially with the first result.
-		return |(@Cmds.sort:{ $^a[0] <=> $^b[0] })[0..$Count - 1]; # There seems to be a problem, especially with the first result.
+		#Dbg 1, (@Cmds.sort:{ $^a[0][1] <=> $^b[0][1] }).flat.elems; #
+		return (@Cmds.sort:{ $^a[0][1] <=> $^b[0][1] }).flat[0..min($Count - 1,@Cmds.elems -1)]; # There seems to be a problem, especially with the first result.
 	}
 }
