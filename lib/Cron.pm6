@@ -52,16 +52,17 @@ sub TimeRangeFilter (:$timezone = $*TZ, :%Cur, :$Unit, :$From!, :@List!, :$Till 
 		);
 	};
 	my %MinDate = |(%Limit.map:{ %Units{$^a.key} => $^a.value<min> unless $^a.key ~~ any(<DOWs>)}), %Cur;
-	return (for (@List) -> $a { 
+	return (for (@List) -> $a { # FIXME This anon routine has very noticable and negitive performance impact on the code. Probably related to MaxDate calls
 		next if ($Unit ~~ 'DOMs' && $a > %Limit<DOMs><max>(%Cur));
 		my Bool $IsFrom = DateTime.new( :$timezone, |$MaxDate({%Cur, %Units{$Unit} => $a}  ) ) >= $From ;
 		my Bool $IsTill = DateTime.new( :$timezone, |%MinDate, |{%Units{$Unit} => $a}) <= $Till;
-		Dbg 2, $DbgPre, "Given {%Cur} AND $Unit $a, Is From = {$IsFrom}, Is Till = {$IsTill}";
-		Dbg 3, $DbgPre, "($IsFrom) Checking MAX >= FROM {DateTime.new( :$timezone, |$MaxDate({%Cur, %Units{$Unit} => $a}  ) )} >= {$From}";
-		Dbg 3, $DbgPre, "($IsTill) Checking MIN <= TILL {DateTime.new( :$timezone, |%MinDate, |{%Units{$Unit} => $a})} <= {$Till}";
+		#Dbg 2, $DbgPre, "Given {%Cur} AND $Unit $a, Is From = {$IsFrom}, Is Till = {$IsTill}";
+		#Dbg 3, $DbgPre, "($IsFrom) Checking MAX >= FROM {DateTime.new( :$timezone, |$MaxDate({%Cur, %Units{$Unit} => $a}  ) )} >= {$From}";
+		#Dbg 3, $DbgPre, "($IsTill) Checking MIN <= TILL {DateTime.new( :$timezone, |%MinDate, |{%Units{$Unit} => $a})} <= {$Till}";
 		$a if (
-			DateTime.new(:$timezone, |$MaxDate({%Cur, %Units{$Unit} => $a}  ) ) >= $From 
-			&& DateTime.new(:$timezone, |%MinDate, |{%Units{$Unit} => $a}) <= $Till
+			#DateTime.new(:$timezone, |$MaxDate({%Cur, %Units{$Unit} => $a}  ) ) >= $From 
+			#&& DateTime.new(:$timezone, |%MinDate, |{%Units{$Unit} => $a}) <= $Till
+			$IsFrom && $IsTill
 		) 
 	});
 }
