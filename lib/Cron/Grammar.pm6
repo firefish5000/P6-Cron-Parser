@@ -13,7 +13,7 @@ grammar Cron::Grammar { # FIXME Most \h, \n, and \s 's should be replaced with a
 	}
 	 #= Timeword: A single astrisk, number, range, or Pattern. Every TimeUnit is made of one or more TimeWords
 	token TimeWord {
-		'*' [\/ \d{1,2}]? | [\d+ '-' \d+] | \d+
+		'*' [\/ \d\d?]? | [\d+ '-' \d+] | \d+
 	}
 	#= Timeunit: A list of comma seperated timewords reperesenting either Minutes, Hours, Days of Month, Months, or Days of the Week
 	#= Minute: Token containing a list of TimeWords pertraining to the minute field of a cronjob

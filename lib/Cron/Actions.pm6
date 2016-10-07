@@ -5,31 +5,14 @@ use v6;
 use DateTime::Math;
 use BC::Debug::Color;
 #$BC::Debug::Color::DebugLevel=0;
-################
-# Project Goal #
-# To automaticly create rtcwake events for every Cron Job.
-#######################
-# Implimantation Goal #
-# Create an RTC wake event for the next CronJob occuring in 10min+
-# By default, Set RTC wake event for 5min prior to CronJob execution time.
-# On Wake, Imediantly create the RTCwake event for the next job that meats the criteria.
-# Check Every 5min to see if cronfile has changed and update events(create a hook to notify us if possible)
-# Allow the user to specify weather to create RTC wake events, both by default, and on individual jobs.
-# Check to see if cron has a &wake(1) or similar command once done. (put your hard work to waste)
-###############
-# SubProjects #
-# CronParser, a potentialy usefull Cron:: Grammar && Actions implimentation;
-#########
-# State #
-# Unusable, no support garenty. Future versions will break this and no there will be no backwards compatibility until API version 0.0.1
-# The API uses the following naming convention. <Complete Rewrite>.<Incompatible Changes>.<Compatible Changes> [Some testing/development tag/number]?
-# For now our API and version is 0.0.0 and our code is broken.
-# Other Thoughts:
-# I need spell checking for vim or a some other good editor for perl6. (padre was crashing)
-# Vim's syntax highlighting is AWFULY SLOW for perl6.
 
+################
+# Actions for Cron::Grammar. Our main job is converting CronTime patterns and ranges to lists.
 # Considered Date-WorkdayCaleder
+
+
 class Cron::CheckTime {
+	#= Checker(min,max,looprange): Creates an anonomouse subroutine that resolves ranges/patterns. Min and max are used to resolve ranges that include an asterisk, and should be the mininmum and maximum possible value for a given unit. looprange sets weather values are forced to be in range by use of the modules operator. This is usefull for the day_of_week timeunit since in many implementations, both 0 and 7 can refer to sunday.
 	method Checker($min,$max,Bool :$looprange = False) {	
 		return sub ( :$from is copy,  :$to is copy =$from) {
 			$from=$min if ($from ~~ '*');
@@ -55,6 +38,7 @@ class Cron::CheckTime {
 #            return self.Checker($min, $max, :$looprange); 
 #        });
 #    }
+	#= For(Wanted_Unit): Returns a Checker for the given unit.
 	method For(Str $Wanted_Unit) {
 		for ['Month', 1, 12], ['Hr', 0, 23], ['Min', 0, 59], ['Dom', 1, 31], ['Dow', 0, 6, True], ['Yr', - Inf, Inf] -> [$unit, $min, $max, Bool $looprange = False ] {
 			next unless $unit eq $Wanted_Unit;
@@ -63,7 +47,9 @@ class Cron::CheckTime {
     }
  }
 
+#= DynamicRange: Adds a SmartRange method which automaticly resolves a units patterns and ranges and returns only the ones between the specified 'from' and 'to'.
 role DynamicRange { # Rethink the role's and method's name.
+	#= SmartRange(from,to,:unit) Resolves patterns and ranges to a list or sequence and returns only the numbers within the specified 'from' and 'to'.
 	method !SmartRange ($from, $to, :$unit) { 
 		$unit.(:$from, :$to);
 	}
@@ -72,46 +58,46 @@ role DynamicRange { # Rethink the role's and method's name.
 class Cron::Time {...}
 class Cron::Time::Unit {...}
 class Cron::Time::Unit::Range {...}
-# NOTE This was made specificly for fcron. other implimentations. Next will be Cron
+#= Actions for Cron::Grammar
 class Cron::Actions {
-	method CronArg($/) {
+	method CronJobVar($/) {
 		make $/;
 	}
 	#TODO Loop This
 #	for <Min Hr Dow Dom Month Yr> -> $Unit {
 #		Cron::Actions.^add_method( $Unit, anon method ($/) {
-#			my @twords = $<TWord>.list;
+#			my @twords = $<TimeWord>.list;
 #			my $cta = Cron::Time::Unit.create( @twords, :unit(Cron::CheckTime."$Unit"()) ) ;
 #			make $cta;
 #		});
 #	}
 	method Hr($/) {
-		my @twords = $<TWord>.list;
+		my @twords = $<TimeWord>.list;
 		my $cta = Cron::Time::Unit.create( @twords, :unit(Cron::CheckTime.For("Hr")) ) ;
 		make $cta;
 	}
 	method Dow($/) {
-		my @twords = $<TWord>.list;
+		my @twords = $<TimeWord>.list;
 		my $cta = Cron::Time::Unit.create( @twords, :unit(Cron::CheckTime.For("Dow")) ) ;
 		make $cta;
 	}
 	method Dom($/) {
-		my @twords = $<TWord>.list;
+		my @twords = $<TimeWord>.list;
 		my $cta = Cron::Time::Unit.create( @twords, :unit(Cron::CheckTime.For("Dom")) ) ;
 		make $cta;
 	}
 	method Month($/) {
-		my @twords = $<TWord>.list;
+		my @twords = $<TimeWord>.list;
 		my $cta = Cron::Time::Unit.create( @twords, :unit(Cron::CheckTime.For("Month")) ) ;
 		make $cta;
 	}
 	method Yr($/) {
-		my @twords = $<TWord>.list;
+		my @twords = $<TimeWord>.list;
 		my $cta = Cron::Time::Unit.create( @twords, :unit(Cron::CheckTime.For("Yr")) ) ;
 		make $cta;
 	}
 	method Min($/) {
-		my @twords = $<TWord>.list;
+		my @twords = $<TimeWord>.list;
 		my $cta = Cron::Time::Unit.create( @twords, :unit(Cron::CheckTime.For("Min")) ) ;
 		make $cta;
 	}
@@ -183,7 +169,7 @@ class Cron::Time { # NOTE Rethink what Str and list should return. (is list reeu
 
 }
 # CONSID makeing Cron::Time::Unit handle CronTimeWord's job. 
-# change <TWord> [ \, <TWord> ]* to Capturing (<.TWord>) [ \, (<.TWord>) ]*
+# change <TimeWord> [ \, <TimeWord> ]* to Capturing (<.TimeWord>) [ \, (<.TimeWord>) ]*
 class Cron::Time::Unit { # NOTE Im still not sure about the name 
 	# An array of One unit of time. ie. 30 0,12 1-5 * 3-5,11-1. Your time units would be 
 	# Min 30
